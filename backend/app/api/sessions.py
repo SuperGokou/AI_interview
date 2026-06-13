@@ -8,11 +8,16 @@ from sqlalchemy.orm import Session
 
 from app.core.cheat_store import list_cheat_events
 from app.core.integrity import compute_integrity_level
+from app.core.report_store import build_report
+from app.core.scoring import ReportGenerator
 from app.core.tokens import generate_link_token
 from app.db import models
 from app.db.base import get_db
 
 router = APIRouter(prefix="/api/sessions")
+
+# 模块级,便于测试注入 fake generator(避免真实 DeepSeek 调用)。
+report_generator_factory = ReportGenerator
 
 
 class CreateSessionRequest(BaseModel):
@@ -38,6 +43,16 @@ class SessionInfo(BaseModel):
     candidate_name: str
     consented: bool
     job: JobSummary
+
+
+class ReportOut(BaseModel):
+    score_professional: int | None
+    score_communication: int | None
+    score_job_match: int | None
+    score_demeanor: int | None
+    ai_risk_level: str | None
+    feedback: str | None
+    overall: str | None
 
 
 def _get_session_or_404(token: str, db: Session) -> models.InterviewSession:
@@ -106,3 +121,31 @@ def get_cheat(token: str, db: Session = Depends(get_db)):
             for e in events
         ],
     }
+
+
+def _report_to_out(r: models.Report) -> ReportOut:
+    return ReportOut(
+        score_professional=r.score_professional,
+        score_communication=r.score_communication,
+        score_job_match=r.score_job_match,
+        score_demeanor=r.score_demeanor,
+        ai_risk_level=r.ai_risk_level,
+        feedback=r.feedback,
+        overall=r.overall,
+    )
+
+
+@router.post("/{token}/report", response_model=ReportOut)
+def create_report(token: str, db: Session = Depends(get_db)):
+    sess = _get_session_or_404(token, db)
+    report = build_report(db, sess.id, report_generator_factory())
+    return _report_to_out(report)
+
+
+@router.get("/{token}/report", response_model=ReportOut)
+def get_report(token: str, db: Session = Depends(get_db)):
+    sess = _get_session_or_404(token, db)
+    report = db.query(models.Report).filter_by(session_id=sess.id).first()
+    if report is None:
+        raise HTTPException(status_code=404, detail="report not found")
+    return _report_to_out(report)
