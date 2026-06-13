@@ -78,6 +78,9 @@ class InterviewBridge:
         self._transcript_buffer: str = ""
 
     def _emit(self, item: dict) -> None:
+        # connect() 尚未调用时 _loop 为 None;安全丢弃事件而非崩溃。
+        if self._loop is None:
+            return
         self._loop.call_soon_threadsafe(self._queue.put_nowait, item)
 
     def _flush_transcript(self) -> None:

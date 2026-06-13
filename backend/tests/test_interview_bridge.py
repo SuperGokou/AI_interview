@@ -63,3 +63,23 @@ async def test_bridge_emits_normalized_audio_event():
                           "delta": base64.b64encode(raw).decode()})
     event = await asyncio.wait_for(bridge.events(), timeout=1.0)
     assert event == {"kind": "audio", "data": raw}
+
+
+@pytest.mark.asyncio
+async def test_bridge_send_audio_base64_encodes_pcm():
+    import base64
+
+    captured = {}
+
+    def factory(*, model, callback, url, api_key=""):
+        conv = FakeConversation(model=model, callback=callback, url=url, api_key=api_key)
+        captured["conv"] = conv
+        return conv
+
+    bridge = InterviewBridge(
+        conversation_factory=factory, model="m", url="ws://x",
+        voice="Tina", instructions="i",
+    )
+    await bridge.connect()
+    await bridge.send_audio(b"\x10\x20\x30")
+    assert captured["conv"].last_audio == base64.b64encode(b"\x10\x20\x30").decode()
