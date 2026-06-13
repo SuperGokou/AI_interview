@@ -14,6 +14,7 @@ class User(Base):  # HR / 管理员
     username: Mapped[str] = mapped_column(String(64), unique=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(16), default="HR")
+    # TODO: 迁移到时区感知 datetime.now(UTC) + DateTime(timezone=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -46,7 +47,7 @@ class Question(Base):
     prompt: Mapped[str] = mapped_column(Text)              # 题干
     key_points: Mapped[str | None] = mapped_column(Text, nullable=True)        # 考点
     reference_answer: Mapped[str | None] = mapped_column(Text, nullable=True)  # 标答
-    difficulty: Mapped[str] = mapped_column(String(8), default="中级")          # 初级/中级/高级
+    difficulty: Mapped[str] = mapped_column(String(16), default="中级")          # 初级/中级/高级
     is_probe: Mapped[bool] = mapped_column(Boolean, default=False)             # 是否防作弊探针题
     job: Mapped["Job"] = relationship(back_populates="questions")
 
@@ -61,6 +62,12 @@ class InterviewSession(Base):
     consented_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    job: Mapped["Job"] = relationship("Job")
+    candidate: Mapped["Candidate"] = relationship("Candidate")
+    transcripts: Mapped[list["Transcript"]] = relationship("Transcript")
+    recordings: Mapped[list["Recording"]] = relationship("Recording")
+    cheat_events: Mapped[list["CheatEvent"]] = relationship("CheatEvent")
+    report: Mapped["Report | None"] = relationship("Report", uselist=False)
 
 
 class Transcript(Base):
@@ -78,6 +85,7 @@ class Recording(Base):
     session_id: Mapped[int] = mapped_column(ForeignKey("interview_sessions.id"))
     media_ref: Mapped[str] = mapped_column(String(255))  # 文件路径/对象存储 key
     duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class CheatEvent(Base):

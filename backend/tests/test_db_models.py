@@ -16,6 +16,7 @@ def db():
     session = TestSession()
     yield session
     session.close()
+    engine.dispose()
 
 
 def test_job_defaults(db):
