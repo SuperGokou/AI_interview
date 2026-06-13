@@ -10,6 +10,7 @@ def _fresh_settings(monkeypatch, **env):
         monkeypatch.delenv(key, raising=False)
     for key, value in env.items():
         monkeypatch.setenv(key, value)
+    config_module.get_settings.cache_clear()
     importlib.reload(config_module)
     return config_module.get_settings()
 
