@@ -100,8 +100,10 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                     text = event["text"]
                     _persist("candidate", text)
                     await ws.send_json({"type": "user_transcript", "text": text})
-                    # AI 味检测(注:真实环境应改为后台 offload 以免阻塞实时流 — Phase 6)
-                    verdict = detector.detect(text)
+                    # AI 味检测:DeepSeek 调用是【同步阻塞】网络请求,放到线程池跑,
+                    # 避免阻塞 asyncio 事件循环(否则整个进程会卡住,不只是本会话)。
+                    loop = asyncio.get_running_loop()
+                    verdict = await loop.run_in_executor(None, detector.detect, text)
                     if verdict.get("is_ai_like") and verdict.get("confidence", 0.0) >= _AI_TEXT_THRESHOLD:
                         record_cheat_event(
                             db, sess.id, kind="ai_text", severity="high",
@@ -112,7 +114,9 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                         )
                 elif kind == "vision":
                     # 注:真实 Qwen 视觉观测的产出留待 Phase 6 联调;这里建好处理管线。
-                    signals = interpret_visual_observation(event)
+                    signals = interpret_visual_observation(
+                        {"flags": event.get("flags", []), "detail": event.get("detail", "")}
+                    )
                     for s in signals:
                         record_cheat_event(
                             db, sess.id, kind=s.kind, severity=s.severity, evidence=s.evidence
