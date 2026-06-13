@@ -6,6 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.cheat_store import list_cheat_events
+from app.core.integrity import compute_integrity_level
 from app.core.tokens import generate_link_token
 from app.db import models
 from app.db.base import get_db
@@ -86,3 +88,21 @@ def consent(token: str, db: Session = Depends(get_db)):
     sess.consented_at = datetime.utcnow()
     db.commit()
     return {"ok": True, "consented": True}
+
+
+@router.get("/{token}/cheat")
+def get_cheat(token: str, db: Session = Depends(get_db)):
+    sess = _get_session_or_404(token, db)
+    events = list_cheat_events(db, sess.id)
+    return {
+        "integrity_level": compute_integrity_level(events),
+        "events": [
+            {
+                "kind": e.kind,
+                "severity": e.severity,
+                "evidence": e.evidence,
+                "ts": e.ts.isoformat() if e.ts else None,
+            }
+            for e in events
+        ],
+    }
