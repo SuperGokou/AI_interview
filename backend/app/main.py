@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.health import router as health_router
+from app.api.sessions import router as sessions_router
 from app.db.base import init_db
 
 
@@ -27,6 +28,7 @@ app.add_middleware(
 )
 
 app.include_router(health_router)
+app.include_router(sessions_router)
 
 
 if __name__ == "__main__":
