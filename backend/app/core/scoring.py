@@ -17,6 +17,8 @@ _SYSTEM = (
     '"feedback":"分维度评语","overall":"录用倾向+亮点+顾虑"}'
 )
 
+_VALID_RISK = {"low", "medium", "high"}
+
 _SAFE_DEFAULT = {
     "score_professional": None,
     "score_communication": None,
@@ -57,7 +59,12 @@ def _fmt_transcripts(transcripts: List[dict]) -> str:
 
 
 def _int_or_none(v):
-    return None if v is None else int(v)
+    if v is None:
+        return None
+    try:
+        return int(v)
+    except (ValueError, TypeError):
+        return None
 
 
 class ReportGenerator:
@@ -92,7 +99,11 @@ class ReportGenerator:
                 "score_communication": _int_or_none(data.get("score_communication")),
                 "score_job_match": _int_or_none(data.get("score_job_match")),
                 "score_demeanor": _int_or_none(data.get("score_demeanor")),
-                "ai_risk_level": data.get("ai_risk_level"),
+                "ai_risk_level": (
+                    data.get("ai_risk_level")
+                    if data.get("ai_risk_level") in _VALID_RISK
+                    else None
+                ),
                 "feedback": str(data.get("feedback", "")),
                 "overall": str(data.get("overall", "")),
             }

@@ -22,6 +22,8 @@ def _cheat_summary(events) -> str:
 def build_report(db: Session, session_id: int, generator: ReportGenerator) -> models.Report:
     """聚合 session 数据,调用 generator 评分,写入(或更新)Report 行。"""
     sess = db.get(models.InterviewSession, session_id)
+    if sess is None:
+        raise ValueError(f"InterviewSession {session_id} not found")
     job = db.get(models.Job, sess.job_id)
     transcripts = (
         db.query(models.Transcript)
