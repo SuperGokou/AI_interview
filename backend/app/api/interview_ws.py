@@ -13,6 +13,9 @@ from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.core.cheat_detection import AiTextDetector
+from app.core.cheat_store import integrity_level, record_cheat_event
+from app.core.integrity import interpret_visual_observation
 from app.core.interview_bridge import InterviewBridge
 from app.db import models
 from app.db.base import get_db
@@ -23,6 +26,12 @@ router = APIRouter()
 
 # 模块级,便于测试 monkeypatch 注入 Fake bridge。
 bridge_factory = InterviewBridge
+
+# 模块级,便于测试注入 Fake detector(避免真实 DeepSeek 网络调用)。
+ai_detector_factory = AiTextDetector
+
+# 回答 AI 味置信度阈值,超过才记一次作弊事件。
+_AI_TEXT_THRESHOLD = 0.6
 
 # 首帧后延迟一会儿再让面试官主动开场,给几帧缓冲时间。
 _OPENER_DELAY_S = 2.0
@@ -73,6 +82,8 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
         db.add(models.Transcript(session_id=sess.id, role=role, text=text))
         db.commit()
 
+    detector = ai_detector_factory()
+
     async def pump_downstream():
         try:
             while True:
@@ -86,8 +97,30 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                     _persist("interviewer", event["text"])
                     await ws.send_json({"type": "transcript", "text": event["text"]})
                 elif kind == "user_transcript":
-                    _persist("candidate", event["text"])
-                    await ws.send_json({"type": "user_transcript", "text": event["text"]})
+                    text = event["text"]
+                    _persist("candidate", text)
+                    await ws.send_json({"type": "user_transcript", "text": text})
+                    # AI 味检测(注:真实环境应改为后台 offload 以免阻塞实时流 — Phase 6)
+                    verdict = detector.detect(text)
+                    if verdict.get("is_ai_like") and verdict.get("confidence", 0.0) >= _AI_TEXT_THRESHOLD:
+                        record_cheat_event(
+                            db, sess.id, kind="ai_text", severity="high",
+                            evidence=verdict.get("reason", ""),
+                        )
+                        await ws.send_json(
+                            {"type": "integrity", "level": integrity_level(db, sess.id)}
+                        )
+                elif kind == "vision":
+                    # 注:真实 Qwen 视觉观测的产出留待 Phase 6 联调;这里建好处理管线。
+                    signals = interpret_visual_observation(event)
+                    for s in signals:
+                        record_cheat_event(
+                            db, sess.id, kind=s.kind, severity=s.severity, evidence=s.evidence
+                        )
+                    if signals:
+                        await ws.send_json(
+                            {"type": "integrity", "level": integrity_level(db, sess.id)}
+                        )
                 elif kind == "close":
                     await ws.close()
                     break
