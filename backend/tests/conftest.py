@@ -28,7 +28,10 @@ def _SessionLocal(_engine):
 
 
 @pytest.fixture
-def client(_engine, _SessionLocal):
+def client(_engine, _SessionLocal, monkeypatch):
+    # Prevent lifespan's init_db() from connecting to Supabase during tests
+    monkeypatch.setattr("app.main.init_db", lambda: None)
+
     def override_get_db():
         db = _SessionLocal()
         try:

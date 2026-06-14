@@ -21,7 +21,11 @@ from app.db.base import init_db
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()  # 开发期建表
+    try:
+        init_db()  # 开发期建表
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("init_db skipped: %s", exc)
     yield
 
 

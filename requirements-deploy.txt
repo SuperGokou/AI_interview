@@ -6,3 +6,4 @@ python-dotenv==1.2.2
 openai==2.41.1
 dashscope==1.25.21
 httpx==0.28.1
+psycopg[binary]==3.2.3
