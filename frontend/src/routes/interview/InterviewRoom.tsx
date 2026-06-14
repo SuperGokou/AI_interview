@@ -137,6 +137,46 @@ export default function InterviewRoom() {
       {/* Visually-hidden accessible heading keeps test assertion and SEO */}
       <h1 className="sr-only">菜鸟庆面试</h1>
 
+      {/* ── 防作弊警示横幅(顶部居中) ── */}
+      <div
+        role="alert"
+        className={[
+          'absolute top-16 md:top-6 left-1/2 -translate-x-1/2 z-20',
+          'flex items-center gap-2 max-w-[92vw]',
+          'bg-red-50/90 border border-red-400 text-[#e01030] backdrop-blur',
+          'rounded-full px-4 py-2 shadow-sm',
+        ].join(' ')}
+      >
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 16 16"
+          fill="none"
+          aria-hidden="true"
+          className="shrink-0"
+        >
+          <path
+            d="M8 1.6 15 14H1L8 1.6Z"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinejoin="round"
+          />
+          <line
+            x1="8"
+            y1="6"
+            x2="8"
+            y2="9.6"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinecap="round"
+          />
+          <circle cx="8" cy="11.7" r="0.9" fill="currentColor" />
+        </svg>
+        <span className="text-[12px] md:text-[13px] font-semibold leading-snug">
+          严禁使用 AI 作弊 · 平台已启用 AI 诚信评测机制,全程检测,异常将被记录
+        </span>
+      </div>
+
       {/* ── Logo (top-left) ── */}
       <div className="absolute top-6 left-7 z-10 flex items-center gap-1.5">
         <span className="text-[20px] font-bold text-[#1c1d2b] tracking-tight leading-none">

@@ -1,0 +1,24 @@
+# Render Blueprint — 菜鸟庆面试系统. One Docker web service: builds the frontend and
+# serves it with the FastAPI backend (/api/*, /ws/interview). HTTPS auto on *.onrender.com
+# (needed for camera/mic). Deploy: push to GitHub → Render → New → Blueprint → pick this repo,
+# then set the sync:false secrets in the dashboard.
+services:
+  - type: web
+    name: cainiaoqing-interview
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: QWEN_API_KEY
+        sync: false
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: HEYGEN_API_KEY
+        sync: false
+      - key: QWEN_OMNI_VOICE
+        value: Tina
+      - key: HEYGEN_AVATAR_ID
+        value: Anna_public_3_20240108
