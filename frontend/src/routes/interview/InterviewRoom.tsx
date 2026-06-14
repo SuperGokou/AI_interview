@@ -17,10 +17,27 @@ function useTimer(initialSeconds = 30 * 60) {
   return `${mm}:${ss}`;
 }
 
+function useAvatarSize() {
+  const getSize = () =>
+    typeof window !== 'undefined' && window.innerWidth < 768 ? 300 : 440;
+  const [size, setSize] = useState(getSize);
+
+  useEffect(() => {
+    function handleResize() {
+      setSize(getSize());
+    }
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  return size;
+}
+
 export default function InterviewRoom() {
   const timer = useTimer();
   const [speaking, setSpeaking] = useState(false);
   const speakTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const avatarSize = useAvatarSize();
 
   function handleTestSpeak() {
     setSpeaking(true);
@@ -28,7 +45,6 @@ export default function InterviewRoom() {
     speakTimerRef.current = setTimeout(() => setSpeaking(false), 4000);
   }
 
-  // Cleanup speak timer on unmount
   useEffect(() => {
     return () => {
       if (speakTimerRef.current) clearTimeout(speakTimerRef.current);
@@ -37,7 +53,7 @@ export default function InterviewRoom() {
 
   return (
     <div
-      className="relative min-h-screen w-full overflow-hidden"
+      className="relative min-h-screen w-full overflow-hidden font-sans"
       style={{
         background:
           'radial-gradient(120% 120% at 50% 0%, #d9d8fb 0%, #c3c4f6 55%, #b3b4f2 100%)',
@@ -46,151 +62,134 @@ export default function InterviewRoom() {
       {/* Visually-hidden accessible heading keeps test assertion and SEO */}
       <h1 className="sr-only">菜鸟庆面试</h1>
 
-      {/* ── Top bar ── */}
-      <header className="absolute top-0 left-0 right-0 flex items-center justify-between px-6 pt-5 pb-2 z-20">
-        {/* Logo */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-lg font-bold text-indigo-900 tracking-tight">
-            菜鸟庆
-          </span>
-          <span
-            className="w-2 h-2 rounded-full bg-indigo-500 mt-0.5"
-            aria-hidden="true"
+      {/* ── Logo (top-left) ── */}
+      <div className="absolute top-6 left-7 z-10 flex items-center gap-1.5">
+        <span className="text-[20px] font-bold text-[#1c1d2b] tracking-tight leading-none">
+          菜鸟庆
+        </span>
+        <span
+          className="w-2 h-2 rounded-full bg-cyan-500 mt-0.5 shrink-0"
+          aria-hidden="true"
+        />
+      </div>
+
+      {/* ── Timer pill (top-right) ── */}
+      <div className="absolute top-6 right-7 z-10 flex items-center gap-1.5 bg-white rounded-full px-3.5 py-2 text-sm font-medium text-[#2a2b3c] shadow">
+        {/* Clock icon */}
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 14 14"
+          fill="none"
+          aria-hidden="true"
+          className="shrink-0"
+        >
+          <circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="1.5" />
+          <path
+            d="M7 4v3.5l2 1.5"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
           />
+        </svg>
+        <span className="font-mono">{timer}</span>
+      </div>
+
+      {/* ── 3D Avatar — centered and dominant ── */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <Avatar3D size={avatarSize} speaking={speaking} />
+      </div>
+
+      {/* ── AI message bubble (desktop: right side; mobile: bottom center above PiP) ── */}
+      <div
+        className={[
+          'z-10 bg-white/85 backdrop-blur rounded-2xl px-5 py-4 shadow-lg',
+          'text-[15px] leading-relaxed text-[#23243a] font-medium',
+          // Desktop: absolute right, vertically centered
+          'hidden md:block absolute right-8 top-1/2 -translate-y-1/2 w-[300px]',
+        ].join(' ')}
+      >
+        你好！我是菜鸟庆，你的 AI 面试官。欢迎参加面试，先做个简单的自我介绍吧？
+      </div>
+      {/* Mobile bubble — above PiP area */}
+      <div
+        className={[
+          'md:hidden z-10 bg-white/85 backdrop-blur rounded-2xl px-5 py-4 shadow-lg',
+          'text-[14px] leading-relaxed text-[#23243a] font-medium',
+          'absolute bottom-[180px] left-4 right-4',
+        ].join(' ')}
+      >
+        你好！我是菜鸟庆，你的 AI 面试官。欢迎参加面试，先做个简单的自我介绍吧？
+      </div>
+
+      {/* ── Candidate video PiP (bottom-left) ── */}
+      <div
+        className={[
+          'absolute bottom-6 left-6 z-10',
+          'rounded-2xl overflow-hidden border-4 border-white shadow-2xl',
+          // Bigger: desktop 340×230, mobile 200×136
+          'w-[200px] h-[136px] md:w-[340px] md:h-[230px]',
+        ].join(' ')}
+        aria-label="候选人自视角"
+      >
+        {/* Placeholder gradient (real webcam later) */}
+        <div
+          className="absolute inset-0 bg-gradient-to-br from-[#9aa3b2] to-[#6f7a8c]"
+          aria-hidden="true"
+        />
+
+        {/* ── TOP-RIGHT: pulsing REC indicator ── */}
+        <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5 bg-black/45 rounded-full px-2.5 py-1">
+          {/* Ping ring (classic live-REC look) */}
+          <span className="relative flex h-2.5 w-2.5 shrink-0">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#ff3b4e] opacity-75" />
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#ff3b4e]" />
+          </span>
+          <span className="text-white text-[11px] font-semibold tracking-wide leading-none">
+            REC
+          </span>
         </div>
 
-        {/* Timer pill */}
-        <div className="flex items-center gap-1.5 bg-white/80 backdrop-blur-sm rounded-full px-4 py-1.5 shadow-sm text-sm font-mono font-semibold text-indigo-900">
+        {/* ── BOTTOM-LEFT: "You" label with mic icon ── */}
+        <div className="absolute bottom-2 left-2 flex items-center gap-1.5 bg-black/55 text-white rounded-lg px-2.5 py-1 text-xs font-medium">
+          {/* Mic icon */}
           <svg
-            width="14"
-            height="14"
-            viewBox="0 0 14 14"
+            width="11"
+            height="11"
+            viewBox="0 0 11 11"
             fill="none"
             aria-hidden="true"
-            className="shrink-0"
           >
-            <circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="1.5" />
+            <rect x="3.5" y="0.5" width="4" height="6" rx="2" fill="white" />
             <path
-              d="M7 4v3.5l2 1.5"
-              stroke="currentColor"
-              strokeWidth="1.5"
+              d="M1.5 5.5c0 2.2 1.79 4 4 4s4-1.8 4-4"
+              stroke="white"
+              strokeWidth="1.2"
               strokeLinecap="round"
-              strokeLinejoin="round"
+            />
+            <line
+              x1="5.5"
+              y1="9.5"
+              x2="5.5"
+              y2="10.5"
+              stroke="white"
+              strokeWidth="1.2"
+              strokeLinecap="round"
             />
           </svg>
-          {timer}
+          You
         </div>
-      </header>
+      </div>
 
-      {/* ── Main content ── */}
-      <main className="flex flex-col md:flex-row items-center justify-center min-h-screen gap-6 px-6 pt-20 pb-10">
-        {/* Left: presenter + test button */}
-        <div className="flex flex-col items-center gap-4 flex-1 max-w-lg">
-          {/* 3D Avatar — transparent canvas sits on top of lavender bg */}
-          <Avatar3D
-            size={360}
-            speaking={speaking}
-            className="w-72 h-72 md:w-96 md:h-96 drop-shadow-2xl"
-          />
-
-          <button
-            onClick={handleTestSpeak}
-            className="mt-2 px-5 py-2 rounded-full bg-indigo-600 hover:bg-indigo-700 active:scale-95 transition-all text-white text-sm font-medium shadow-md"
-            type="button"
-          >
-            测试说话
-          </button>
-        </div>
-
-        {/* Right: chat bubble + recording pill + PiP */}
-        <div className="flex flex-col gap-4 items-start w-full md:w-auto md:max-w-xs">
-          {/* Question bubble */}
-          <div className="bg-white/85 backdrop-blur-sm rounded-2xl rounded-tl-sm px-5 py-4 shadow-md">
-            <p className="text-sm leading-relaxed text-indigo-950">
-              你好！我是菜鸟庆，你的 AI 面试官。欢迎参加面试，先做个简单的自我介绍吧？
-            </p>
-          </div>
-
-          {/* Recording pill */}
-          <div className="flex items-center gap-2 bg-white/80 backdrop-blur-sm rounded-full px-4 py-1.5 shadow-sm self-start">
-            <span
-              className="w-2 h-2 rounded-full bg-red-500 animate-pulse"
-              aria-hidden="true"
-            />
-            <span className="text-xs font-semibold text-red-600 tracking-wide uppercase">
-              Recording
-            </span>
-          </div>
-
-          {/* Candidate self-view PiP */}
-          <div
-            className="relative rounded-2xl overflow-hidden shadow-lg"
-            style={{ width: 190, height: 120 }}
-            aria-label="候选人自视角"
-          >
-            {/* Placeholder gradient for camera preview */}
-            <div
-              className="absolute inset-0"
-              style={{
-                background:
-                  'linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 50%, #a5b4fc 100%)',
-              }}
-            />
-            {/* "You" pill */}
-            <div className="absolute bottom-2 left-2 flex items-center gap-1.5 bg-black/60 backdrop-blur-sm rounded-full px-2.5 py-1">
-              <svg
-                width="10"
-                height="10"
-                viewBox="0 0 10 10"
-                fill="none"
-                aria-hidden="true"
-              >
-                <ellipse cx="5" cy="3.5" rx="2" ry="2" fill="white" />
-                <path
-                  d="M1 9c0-2.2 1.8-4 4-4s4 1.8 4 4"
-                  stroke="white"
-                  strokeWidth="1.2"
-                  strokeLinecap="round"
-                />
-              </svg>
-              <span className="text-white text-[10px] font-semibold">You</span>
-              {/* Mic glyph */}
-              <svg
-                width="9"
-                height="9"
-                viewBox="0 0 9 9"
-                fill="none"
-                aria-hidden="true"
-                className="ml-0.5"
-              >
-                <rect
-                  x="3"
-                  y="0.5"
-                  width="3"
-                  height="5"
-                  rx="1.5"
-                  fill="white"
-                />
-                <path
-                  d="M1.5 4.5c0 1.65 1.35 3 3 3s3-1.35 3-3"
-                  stroke="white"
-                  strokeWidth="1"
-                  strokeLinecap="round"
-                />
-                <line
-                  x1="4.5"
-                  y1="7.5"
-                  x2="4.5"
-                  y2="8.5"
-                  stroke="white"
-                  strokeWidth="1"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </div>
-          </div>
-        </div>
-      </main>
+      {/* ── "测试说话" button (bottom-right, unobtrusive) ── */}
+      <button
+        type="button"
+        onClick={handleTestSpeak}
+        className="absolute bottom-6 right-8 z-10 px-4 py-2 rounded-full bg-white/80 hover:bg-white active:scale-95 transition-all text-[#2a2b3c] text-sm font-medium shadow border border-white/60 backdrop-blur"
+      >
+        测试说话
+      </button>
     </div>
   );
 }
