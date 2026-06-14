@@ -1,6 +1,6 @@
 """面试会话 REST(单一职责:会话创建/查询/同意条款)。"""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -100,7 +100,7 @@ def get_session(token: str, db: Session = Depends(get_db)):
 @router.post("/{token}/consent")
 def consent(token: str, db: Session = Depends(get_db)):
     sess = _get_session_or_404(token, db)
-    sess.consented_at = datetime.utcnow()
+    sess.consented_at = datetime.now(UTC)
     db.commit()
     return {"ok": True, "consented": True}
 

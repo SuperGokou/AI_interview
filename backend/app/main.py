@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.dev import router as dev_router
 from app.api.health import router as health_router
 from app.api.heygen import router as heygen_router
 from app.api.interview_ws import router as interview_ws_router
@@ -33,6 +34,7 @@ app.include_router(health_router)
 app.include_router(sessions_router)
 app.include_router(interview_ws_router)
 app.include_router(heygen_router)
+app.include_router(dev_router)
 
 
 if __name__ == "__main__":
