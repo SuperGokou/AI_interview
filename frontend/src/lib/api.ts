@@ -4,6 +4,10 @@ import type {
   CheatResponse,
   ReportOut,
   HealthResponse,
+  Job,
+  Question,
+  SessionListItem,
+  DashboardStats,
 } from '../types';
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
@@ -39,6 +43,30 @@ export const api = {
 
   getReport: (token: string) =>
     req<ReportOut>(`/api/sessions/${token}/report`),
+
+  // Jobs
+  listJobs: () => req<Job[]>('/api/jobs'),
+  createJob: (body: Omit<Job, 'id' | 'question_count' | 'candidate_count'>) =>
+    req<Job>('/api/jobs', { method: 'POST', body: JSON.stringify(body) }),
+  getJob: (id: number) => req<Job>(`/api/jobs/${id}`),
+  updateJob: (id: number, body: Partial<Omit<Job, 'id' | 'question_count' | 'candidate_count'>>) =>
+    req<Job>(`/api/jobs/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteJob: (id: number) => req<{ ok: boolean }>(`/api/jobs/${id}`, { method: 'DELETE' }),
+
+  // Questions
+  listQuestions: (jobId: number) => req<Question[]>(`/api/jobs/${jobId}/questions`),
+  createQuestion: (jobId: number, body: Omit<Question, 'id' | 'job_id'>) =>
+    req<Question>(`/api/jobs/${jobId}/questions`, { method: 'POST', body: JSON.stringify(body) }),
+  updateQuestion: (id: number, body: Partial<Omit<Question, 'id' | 'job_id'>>) =>
+    req<Question>(`/api/questions/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteQuestion: (id: number) =>
+    req<{ ok: boolean }>(`/api/questions/${id}`, { method: 'DELETE' }),
+
+  // Sessions list
+  listSessions: () => req<SessionListItem[]>('/api/sessions'),
+
+  // Dashboard
+  dashboardStats: () => req<DashboardStats>('/api/dashboard/stats'),
 };
 
 export function interviewWsUrl(token: string): string {
