@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import Avatar3D from '../../components/Avatar3D';
+import AvatarImage from '../../components/AvatarImage';
 import { useInterviewSession } from '../../hooks/useInterviewSession';
 import type { IntegrityLevel } from '../../types';
 
@@ -181,9 +181,9 @@ export default function InterviewRoom() {
         </div>
       </div>
 
-      {/* ── 3D Avatar — centered and dominant ── */}
+      {/* ── Interviewer avatar — centered and dominant ── */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <Avatar3D size={avatarSize} speaking={session.speaking} />
+        <AvatarImage size={avatarSize} speaking={session.speaking} />
       </div>
 
       {/* ── AI message bubble (desktop: right side; mobile: bottom center above PiP) ── */}
@@ -193,7 +193,7 @@ export default function InterviewRoom() {
             className={[
               'z-10 bg-white/85 backdrop-blur rounded-2xl px-5 py-4 shadow-lg',
               'text-[15px] leading-relaxed text-[#23243a] font-medium',
-              'hidden md:block absolute right-8 top-1/2 -translate-y-1/2 w-[300px]',
+              'hidden md:block absolute right-24 top-1/2 -translate-y-1/2 w-[320px]',
             ].join(' ')}
           >
             {interviewerLine}
