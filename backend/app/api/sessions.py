@@ -1,6 +1,6 @@
 """面试会话 REST(单一职责:会话创建/查询/同意条款)。"""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -62,6 +62,49 @@ def _get_session_or_404(token: str, db: Session) -> models.InterviewSession:
     return sess
 
 
+class SessionListItem(BaseModel):
+    token: str
+    candidate_name: str
+    job_title: str
+    status: str
+    integrity_level: str
+    score_overall: int | None
+    created_at: str | None
+
+
+@router.get("", response_model=list[SessionListItem])
+def list_sessions(db: Session = Depends(get_db)):
+    """列出所有面试会话(最新优先),用于 HR 后台记录列表、仪表盘等。"""
+    sessions = (
+        db.query(models.InterviewSession)
+        .order_by(models.InterviewSession.id.desc())
+        .all()
+    )
+    result: list[SessionListItem] = []
+    for sess in sessions:
+        candidate = db.get(models.Candidate, sess.candidate_id)
+        job = db.get(models.Job, sess.job_id)
+        events = list_cheat_events(db, sess.id)
+        integrity_level = compute_integrity_level(events)
+        report = db.query(models.Report).filter_by(session_id=sess.id).first()
+        score_overall = report.score_professional if report else None
+        # created_at: prefer started_at, else consented_at, else None
+        raw_ts = sess.started_at or sess.consented_at
+        created_at = raw_ts.isoformat() if raw_ts else None
+        result.append(
+            SessionListItem(
+                token=sess.link_token,
+                candidate_name=candidate.name if candidate else "",
+                job_title=job.title if job else "",
+                status=sess.status,
+                integrity_level=integrity_level,
+                score_overall=score_overall,
+                created_at=created_at,
+            )
+        )
+    return result
+
+
 @router.post("", response_model=CreateSessionResponse)
 def create_session(req: CreateSessionRequest, db: Session = Depends(get_db)):
     job = db.get(models.Job, req.job_id)
@@ -100,7 +143,7 @@ def get_session(token: str, db: Session = Depends(get_db)):
 @router.post("/{token}/consent")
 def consent(token: str, db: Session = Depends(get_db)):
     sess = _get_session_or_404(token, db)
-    sess.consented_at = datetime.utcnow()
+    sess.consented_at = datetime.now(UTC)
     db.commit()
     return {"ok": True, "consented": True}
 
@@ -133,6 +176,32 @@ def _report_to_out(r: models.Report) -> ReportOut:
         feedback=r.feedback,
         overall=r.overall,
     )
+
+
+class TranscriptOut(BaseModel):
+    role: str
+    text: str
+    ts: str | None
+
+
+@router.get("/{token}/transcripts", response_model=list[TranscriptOut])
+def list_transcripts(token: str, db: Session = Depends(get_db)):
+    """返回会话的完整对话转写列表(按 id 升序)。"""
+    sess = _get_session_or_404(token, db)
+    rows = (
+        db.query(models.Transcript)
+        .filter_by(session_id=sess.id)
+        .order_by(models.Transcript.id)
+        .all()
+    )
+    return [
+        TranscriptOut(
+            role=t.role,
+            text=t.text,
+            ts=t.ts.isoformat() if t.ts else None,
+        )
+        for t in rows
+    ]
 
 
 @router.post("/{token}/report", response_model=ReportOut)

@@ -66,6 +66,28 @@ async def test_bridge_emits_normalized_audio_event():
 
 
 @pytest.mark.asyncio
+async def test_bridge_emits_transcript_delta_live():
+    """transcript_delta events are forwarded immediately (not buffered until done)."""
+
+    def factory(*, model, callback, url, api_key=""):
+        return FakeConversation(model=model, callback=callback, url=url, api_key=api_key)
+
+    bridge = InterviewBridge(
+        conversation_factory=factory, model="m", url="ws://x",
+        voice="Tina", instructions="i",
+    )
+    await bridge.connect()
+    bridge._handle_event({"type": "response.audio_transcript.delta", "delta": "Hello "})
+    bridge._handle_event({"type": "response.audio_transcript.delta", "delta": "world"})
+    delta1 = await asyncio.wait_for(bridge.events(), timeout=1.0)
+    delta2 = await asyncio.wait_for(bridge.events(), timeout=1.0)
+    assert delta1 == {"kind": "transcript_delta", "text": "Hello "}
+    assert delta2 == {"kind": "transcript_delta", "text": "world"}
+    # Buffer is still accumulated for the final flush
+    assert bridge._transcript_buffer == "Hello world"
+
+
+@pytest.mark.asyncio
 async def test_bridge_send_audio_base64_encodes_pcm():
     import base64
 

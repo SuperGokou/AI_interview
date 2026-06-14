@@ -1,6 +1,7 @@
 import asyncio
 
 from app.db import models
+from app.core.scoring import ReportGenerator
 
 
 def _seed(db_session, *, token="tok-abc", voice="Ethan"):
@@ -70,3 +71,37 @@ def test_ws_invalid_token_sends_error(client):
     with client.websocket_connect("/ws/interview?token=does-not-exist") as ws:
         frame = ws.receive_json()
         assert frame["type"] == "error"
+
+
+class _FakeGenWS:
+    """Fake report generator that returns a fixed score dict (no real DeepSeek call)."""
+
+    def generate(self, **kwargs):
+        return {
+            "score_professional": 75,
+            "score_communication": 70,
+            "score_job_match": 80,
+            "score_demeanor": None,
+            "ai_risk_level": "low",
+            "feedback": "WS auto-report test feedback",
+            "overall": "WS auto-report test overall",
+        }
+
+
+def test_ws_disconnect_auto_generates_report(client, db_session, monkeypatch):
+    """WS 断连后 finally 块应自动生成 Report 行。"""
+    sess_id = _seed(db_session, token="tok-auto-report")
+    monkeypatch.setattr("app.api.interview_ws.bridge_factory", _FakeBridge)
+    monkeypatch.setattr(
+        "app.api.interview_ws.report_generator_factory", lambda: _FakeGenWS()
+    )
+
+    with client.websocket_connect("/ws/interview?token=tok-auto-report") as ws:
+        # Receive the one transcript pushed by FakeBridge, then disconnect
+        ws.receive_json()
+
+    # Session should be committed; expire to see latest DB state
+    db_session.expire_all()
+    report = db_session.query(models.Report).filter_by(session_id=sess_id).first()
+    assert report is not None
+    assert report.score_professional == 75

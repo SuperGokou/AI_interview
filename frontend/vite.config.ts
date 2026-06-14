@@ -14,5 +14,10 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: './vitest.setup.ts',
+    server: {
+      deps: {
+        inline: ['@heygen/streaming-avatar', 'livekit-client'],
+      },
+    },
   },
 });
