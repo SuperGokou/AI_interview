@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import HeyGenAvatar, { type HeyGenHandle } from '../../components/HeyGenAvatar';
-
-const GREETING = '你好,我是菜鸟庆,很高兴见到你。请先做个自我介绍吧。';
+import Avatar3D from '../../components/Avatar3D';
 
 function useTimer(initialSeconds = 30 * 60) {
   const [seconds, setSeconds] = useState(initialSeconds);
@@ -20,12 +18,22 @@ function useTimer(initialSeconds = 30 * 60) {
 }
 
 export default function InterviewRoom() {
-  const avatarRef = useRef<HeyGenHandle>(null);
   const timer = useTimer();
+  const [speaking, setSpeaking] = useState(false);
+  const speakTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function handleTestSpeak() {
-    avatarRef.current?.speak(GREETING);
+    setSpeaking(true);
+    if (speakTimerRef.current) clearTimeout(speakTimerRef.current);
+    speakTimerRef.current = setTimeout(() => setSpeaking(false), 4000);
   }
+
+  // Cleanup speak timer on unmount
+  useEffect(() => {
+    return () => {
+      if (speakTimerRef.current) clearTimeout(speakTimerRef.current);
+    };
+  }, []);
 
   return (
     <div
@@ -78,9 +86,11 @@ export default function InterviewRoom() {
       <main className="flex flex-col md:flex-row items-center justify-center min-h-screen gap-6 px-6 pt-20 pb-10">
         {/* Left: presenter + test button */}
         <div className="flex flex-col items-center gap-4 flex-1 max-w-lg">
-          <HeyGenAvatar
-            ref={avatarRef}
-            className="w-72 h-72 md:w-96 md:h-96 shadow-2xl"
+          {/* 3D Avatar — transparent canvas sits on top of lavender bg */}
+          <Avatar3D
+            size={360}
+            speaking={speaking}
+            className="w-72 h-72 md:w-96 md:h-96 drop-shadow-2xl"
           />
 
           <button
