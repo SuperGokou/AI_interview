@@ -8,10 +8,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.api.dashboard import router as dashboard_router
 from app.api.dev import router as dev_router
 from app.api.health import router as health_router
 from app.api.heygen import router as heygen_router
 from app.api.interview_ws import router as interview_ws_router
+from app.api.jobs import router as jobs_router
+from app.api.questions import router as questions_router
 from app.api.sessions import router as sessions_router
 from app.db.base import init_db
 
@@ -35,6 +38,9 @@ app.add_middleware(
 
 app.include_router(health_router)
 app.include_router(sessions_router)
+app.include_router(jobs_router)
+app.include_router(questions_router)
+app.include_router(dashboard_router)
 app.include_router(interview_ws_router)
 app.include_router(heygen_router)
 app.include_router(dev_router)

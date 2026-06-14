@@ -36,6 +36,7 @@ class Job(Base):
     interviewer_voice: Mapped[str] = mapped_column(String(16), default="Tina")
     language: Mapped[str] = mapped_column(String(8), default="zh")          # zh / en
     duration_minutes: Mapped[int] = mapped_column(Integer, default=30)
+    status: Mapped[str] = mapped_column(String(16), default="招聘中")
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     questions: Mapped[list["Question"]] = relationship(back_populates="job")

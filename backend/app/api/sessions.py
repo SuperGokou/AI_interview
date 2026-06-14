@@ -62,6 +62,49 @@ def _get_session_or_404(token: str, db: Session) -> models.InterviewSession:
     return sess
 
 
+class SessionListItem(BaseModel):
+    token: str
+    candidate_name: str
+    job_title: str
+    status: str
+    integrity_level: str
+    score_overall: int | None
+    created_at: str | None
+
+
+@router.get("", response_model=list[SessionListItem])
+def list_sessions(db: Session = Depends(get_db)):
+    """列出所有面试会话(最新优先),用于 HR 后台记录列表、仪表盘等。"""
+    sessions = (
+        db.query(models.InterviewSession)
+        .order_by(models.InterviewSession.id.desc())
+        .all()
+    )
+    result: list[SessionListItem] = []
+    for sess in sessions:
+        candidate = db.get(models.Candidate, sess.candidate_id)
+        job = db.get(models.Job, sess.job_id)
+        events = list_cheat_events(db, sess.id)
+        integrity_level = compute_integrity_level(events)
+        report = db.query(models.Report).filter_by(session_id=sess.id).first()
+        score_overall = report.score_professional if report else None
+        # created_at: prefer started_at, else consented_at, else None
+        raw_ts = sess.started_at or sess.consented_at
+        created_at = raw_ts.isoformat() if raw_ts else None
+        result.append(
+            SessionListItem(
+                token=sess.link_token,
+                candidate_name=candidate.name if candidate else "",
+                job_title=job.title if job else "",
+                status=sess.status,
+                integrity_level=integrity_level,
+                score_overall=score_overall,
+                created_at=created_at,
+            )
+        )
+    return result
+
+
 @router.post("", response_model=CreateSessionResponse)
 def create_session(req: CreateSessionRequest, db: Session = Depends(get_db)):
     job = db.get(models.Job, req.job_id)
