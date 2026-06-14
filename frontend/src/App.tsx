@@ -7,6 +7,7 @@ import Questions from './routes/admin/Questions';
 import Candidates from './routes/admin/Candidates';
 import Records from './routes/admin/Records';
 import ReportDetail from './routes/admin/ReportDetail';
+import Settings from './routes/admin/Settings';
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
       <Route path="/admin/candidates" element={<Candidates />} />
       <Route path="/admin/records" element={<Records />} />
       <Route path="/admin/reports/:token" element={<ReportDetail />} />
+      <Route path="/admin/settings" element={<Settings />} />
     </Routes>
   );
 }

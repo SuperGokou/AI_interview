@@ -37,7 +37,16 @@ def _make_engine(database_url: str):
         port=port,
         database=database,
     )
-    return create_engine(url, pool_pre_ping=True, connect_args={"sslmode": "require"}, future=True)
+    # sslmode=require for Supabase; prepare_threshold=None disables prepared
+    # statements so the connection works through the Supabase pooler (pgbouncer
+    # transaction mode) as well as the session pooler — needed on IPv4-only hosts
+    # like Render (the IPv6 direct host db.<ref>.supabase.co is unreachable there).
+    return create_engine(
+        url,
+        pool_pre_ping=True,
+        connect_args={"sslmode": "require", "prepare_threshold": None},
+        future=True,
+    )
 
 
 engine = _make_engine(get_settings().database_url)
