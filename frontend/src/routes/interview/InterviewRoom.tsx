@@ -72,12 +72,44 @@ export default function InterviewRoom() {
     if (startingRef.current || session.active) return;
     startingRef.current = true;
     setStartError('');
+
+    // 1) Acquire media FIRST while still in the user-gesture microtask,
+    //    before any network fetch that could break the permission grant.
+    let stream: MediaStream;
     try {
-      let token = urlToken;
-      if (!token) {
-        token = await fetchDemoToken();
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new DOMException('insecure context or unsupported browser', 'NotSupportedError');
       }
-      await session.start(token);
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: { echoCancellation: true, noiseSuppression: true },
+      });
+    } catch (e) {
+      const name = e instanceof DOMException ? e.name : 'Error';
+      setStartError(
+        `无法开启摄像头/麦克风 [${name}]。请用 http://localhost 打开、允许浏览器权限,并检查 Windows 隐私设置。`
+      );
+      startingRef.current = false;
+      return;
+    }
+
+    // 2) Get a token (URL param takes priority; else create a demo session).
+    let token = urlToken;
+    if (!token) {
+      try {
+        token = await fetchDemoToken();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setStartError(`创建演示会话失败,请确认后端已启动: ${msg}`);
+        stream.getTracks().forEach((t) => t.stop());
+        startingRef.current = false;
+        return;
+      }
+    }
+
+    // 3) Start the session reusing the already-acquired stream.
+    try {
+      await session.start(token, stream);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setStartError(msg);

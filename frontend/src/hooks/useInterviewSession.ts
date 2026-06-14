@@ -33,7 +33,7 @@ function base64ToArrayBuffer(b64: string): ArrayBuffer {
 }
 
 export interface UseInterviewSessionResult {
-  start: (token: string) => Promise<void>;
+  start: (token: string, preStream?: MediaStream) => Promise<void>;
   stop: () => void;
   active: boolean;
   videoRef: React.MutableRefObject<HTMLVideoElement | null>;
@@ -125,7 +125,7 @@ export function useInterviewSession(): UseInterviewSessionResult {
   useEffect(() => stop, [stop]);
 
   const start = useCallback(
-    async (token: string) => {
+    async (token: string, preStream?: MediaStream) => {
       // Guard: don't allow double-start
       if (startingRef.current || active) {
         return;
@@ -134,16 +134,37 @@ export function useInterviewSession(): UseInterviewSessionResult {
       setError('');
 
       let stream: MediaStream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: { echoCancellation: true, noiseSuppression: true },
-        });
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        setError(`摄像头/麦克风访问失败: ${msg}`);
-        startingRef.current = false;
-        return;
+      if (preStream) {
+        stream = preStream;
+      } else {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          setError(
+            '当前环境无法访问摄像头/麦克风:请用 http://localhost:5173 打开(不要用局域网 IP 或非 https 地址)。'
+          );
+          startingRef.current = false;
+          return;
+        }
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: { echoCancellation: true, noiseSuppression: true },
+          });
+        } catch (e) {
+          const name = e instanceof DOMException ? e.name : '';
+          const msg = e instanceof Error ? e.message : String(e);
+          let hint = '';
+          if (name === 'NotAllowedError')
+            hint =
+              '(权限被拒绝:请在地址栏左侧允许摄像头与麦克风,或检查 Windows 设置→隐私→摄像头/麦克风)';
+          else if (name === 'NotFoundError')
+            hint = '(未找到摄像头/麦克风设备)';
+          else if (name === 'NotReadableError')
+            hint =
+              '(设备被其他程序占用:请关闭正在使用摄像头的其他应用,或检查 Windows 隐私设置)';
+          setError(`摄像头/麦克风访问失败 [${name || 'Error'}]: ${msg} ${hint}`);
+          startingRef.current = false;
+          return;
+        }
       }
 
       streamRef.current = stream;
