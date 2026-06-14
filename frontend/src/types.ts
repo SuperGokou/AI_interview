@@ -99,3 +99,9 @@ export interface HealthResponse {
   database: string;
   models: { qwen: boolean; deepseek: boolean };
 }
+
+export interface Transcript {
+  role: string;
+  text: string;
+  ts: string | null;
+}

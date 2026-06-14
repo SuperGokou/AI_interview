@@ -222,3 +222,49 @@ def test_dashboard_recent_has_correct_shape(client, db_session):
         item = body["recent"][0]
         for field in ("token", "candidate_name", "job_title", "status", "integrity_level"):
             assert field in item
+
+
+# ---------------------------------------------------------------------------
+# Transcripts endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_list_transcripts_returns_ordered_by_id(client, db_session):
+    """GET /api/sessions/{token}/transcripts 应按 id 升序返回转写,含 role/text/ts。"""
+    job = _create_job(client, title="转写测试岗位")
+    sess = _seed_session(db_session, job["id"], candidate_name="转写候选人")
+
+    # Seed 2 transcripts in a specific order
+    t1 = models.Transcript(session_id=sess.id, role="interviewer", text="请做个自我介绍")
+    t2 = models.Transcript(session_id=sess.id, role="candidate", text="大家好,我是转写候选人")
+    db_session.add(t1)
+    db_session.add(t2)
+    db_session.commit()
+
+    resp = client.get(f"/api/sessions/{sess.link_token}/transcripts")
+    assert resp.status_code == 200
+    items = resp.json()
+    assert len(items) == 2
+    # Ordered by id: interviewer first, then candidate
+    assert items[0]["role"] == "interviewer"
+    assert items[0]["text"] == "请做个自我介绍"
+    assert items[1]["role"] == "candidate"
+    assert items[1]["text"] == "大家好,我是转写候选人"
+    # ts field present (may be string or null)
+    assert "ts" in items[0]
+    assert "ts" in items[1]
+
+
+def test_list_transcripts_empty_when_none(client, db_session):
+    """没有转写时应返回空列表而不是报错。"""
+    job = _create_job(client, title="空转写岗位")
+    sess = _seed_session(db_session, job["id"], candidate_name="空候选人")
+
+    resp = client.get(f"/api/sessions/{sess.link_token}/transcripts")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_list_transcripts_404_unknown_token(client):
+    """未知 token 应返回 404。"""
+    assert client.get("/api/sessions/no-such-token/transcripts").status_code == 404

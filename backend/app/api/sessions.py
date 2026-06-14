@@ -178,6 +178,32 @@ def _report_to_out(r: models.Report) -> ReportOut:
     )
 
 
+class TranscriptOut(BaseModel):
+    role: str
+    text: str
+    ts: str | None
+
+
+@router.get("/{token}/transcripts", response_model=list[TranscriptOut])
+def list_transcripts(token: str, db: Session = Depends(get_db)):
+    """返回会话的完整对话转写列表(按 id 升序)。"""
+    sess = _get_session_or_404(token, db)
+    rows = (
+        db.query(models.Transcript)
+        .filter_by(session_id=sess.id)
+        .order_by(models.Transcript.id)
+        .all()
+    )
+    return [
+        TranscriptOut(
+            role=t.role,
+            text=t.text,
+            ts=t.ts.isoformat() if t.ts else None,
+        )
+        for t in rows
+    ]
+
+
 @router.post("/{token}/report", response_model=ReportOut)
 def create_report(token: str, db: Session = Depends(get_db)):
     sess = _get_session_or_404(token, db)

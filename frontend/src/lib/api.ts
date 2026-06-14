@@ -8,6 +8,7 @@ import type {
   Question,
   SessionListItem,
   DashboardStats,
+  Transcript,
 } from '../types';
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
@@ -67,6 +68,10 @@ export const api = {
 
   // Dashboard
   dashboardStats: () => req<DashboardStats>('/api/dashboard/stats'),
+
+  // Transcripts
+  listTranscripts: (token: string) =>
+    req<Transcript[]>(`/api/sessions/${token}/transcripts`),
 };
 
 export function interviewWsUrl(token: string): string {

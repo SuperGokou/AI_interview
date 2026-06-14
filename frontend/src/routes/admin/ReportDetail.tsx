@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { AdminShell, Card, Button, Pill } from '../../ui';
 import { api } from '../../lib/api';
-import type { ReportOut, CheatResponse, RiskLevel, IntegrityLevel } from '../../types';
+import type { ReportOut, CheatResponse, RiskLevel, IntegrityLevel, Transcript } from '../../types';
 
 const INTEGRITY_COLOR: Record<IntegrityLevel, string> = {
   green: '#2BE5A4',
@@ -55,6 +55,7 @@ export default function ReportDetail() {
   const { token } = useParams<{ token: string }>();
   const [report, setReport] = useState<ReportOut | null>(null);
   const [cheat, setCheat] = useState<CheatResponse | null>(null);
+  const [transcripts, setTranscripts] = useState<Transcript[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,10 +73,12 @@ export default function ReportDetail() {
         throw err;
       }),
       api.getCheat(t).catch(() => null),
+      api.listTranscripts(t).catch(() => []),
     ])
-      .then(([r, c]) => {
+      .then(([r, c, tx]) => {
         setReport(r);
         if (c) setCheat(c);
+        setTranscripts(tx ?? []);
         setLoading(false);
       })
       .catch((err: unknown) => {
@@ -154,6 +157,52 @@ export default function ReportDetail() {
             </Card>
           )}
         </>
+      )}
+
+      {!loading && transcripts.length > 0 && (
+        <Card className="mb-6">
+          <h2 className="text-sm font-semibold text-text mb-4">完整对话转写</h2>
+          <div className="flex flex-col gap-3">
+            {transcripts.map((tx, i) => (
+              <div
+                key={i}
+                className={`flex gap-3 ${tx.role === 'candidate' ? 'justify-end' : 'justify-start'}`}
+              >
+                {tx.role === 'interviewer' && (
+                  <span
+                    className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mt-0.5"
+                    style={{ background: '#0E4F6A', color: '#2DD4EF' }}
+                    aria-hidden="true"
+                  >
+                    I
+                  </span>
+                )}
+                <div
+                  className="max-w-[78%] rounded-xl px-4 py-2.5"
+                  style={
+                    tx.role === 'interviewer'
+                      ? { background: '#0E3A4F', border: '1px solid #1A5F7A', color: '#7DD3F5' }
+                      : { background: '#1E2A3A', border: '1px solid #2A3A4A', color: '#C8D8E8' }
+                  }
+                >
+                  <p className="text-sm leading-relaxed">{tx.text}</p>
+                  {tx.ts && (
+                    <p className="text-xs mt-1 opacity-50">{tx.ts}</p>
+                  )}
+                </div>
+                {tx.role === 'candidate' && (
+                  <span
+                    className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mt-0.5"
+                    style={{ background: '#1E3A2A', color: '#2BE5A4' }}
+                    aria-hidden="true"
+                  >
+                    C
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
       )}
 
       {!loading && cheat && (
