@@ -139,9 +139,9 @@ export default function PlasmaOrb({
     const drawFrame = (t: number) => {
       const time = t * cfg.speedMul;
 
-      // 1. Trailing fade
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.fillStyle = 'rgba(6,10,20,0.16)';
+      // 1. Trailing fade — destination-out preserves transparency (no opaque square)
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.fillStyle = 'rgba(0,0,0,0.16)';
       ctx.fillRect(0, 0, S, S);
       ctx.globalCompositeOperation = 'lighter';
 
@@ -308,7 +308,13 @@ export default function PlasmaOrb({
       role="img"
       aria-label="AI 面试官能量光球"
       className={className}
-      style={{ display: 'block' }}
+      style={{
+        display: 'block',
+        width: size,
+        height: size,
+        WebkitMaskImage: 'radial-gradient(circle at 50% 50%, #000 55%, transparent 73%)',
+        maskImage: 'radial-gradient(circle at 50% 50%, #000 55%, transparent 73%)',
+      }}
     />
   );
 }
