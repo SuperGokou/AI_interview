@@ -74,6 +74,7 @@ export function useInterviewSession(): UseInterviewSessionResult {
   const frameTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const speakTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startingRef = useRef(false); // guard against double-start
+  const newInterviewerTurnRef = useRef(true); // true = next delta starts a fresh subtitle line
 
   const stop = useCallback(() => {
     // Stop all camera/mic tracks
@@ -117,6 +118,7 @@ export function useInterviewSession(): UseInterviewSessionResult {
     playbackCtxRef.current = null;
 
     startingRef.current = false;
+    newInterviewerTurnRef.current = true;
     setActive(false);
     setSpeaking(false);
   }, []);
@@ -218,8 +220,16 @@ export function useInterviewSession(): UseInterviewSessionResult {
             setSpeaking(false);
             speakTimerRef.current = null;
           }, SPEAKING_DEBOUNCE_MS);
+        } else if (msg.type === 'transcript_delta' && typeof msg.text === 'string') {
+          if (newInterviewerTurnRef.current) {
+            setInterviewerText(msg.text);
+            newInterviewerTurnRef.current = false;
+          } else {
+            setInterviewerText((prev) => prev + msg.text);
+          }
         } else if (msg.type === 'transcript' && typeof msg.text === 'string') {
           setInterviewerText(msg.text);
+          newInterviewerTurnRef.current = true;
         } else if (msg.type === 'user_transcript' && typeof msg.text === 'string') {
           setCandidateText(msg.text);
         } else if (msg.type === 'integrity' && typeof msg.level === 'string') {

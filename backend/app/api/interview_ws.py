@@ -93,6 +93,8 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                     await ws.send_json(
                         {"type": "audio", "data": base64.b64encode(event["data"]).decode()}
                     )
+                elif kind == "transcript_delta":
+                    await ws.send_json({"type": "transcript_delta", "text": event["text"]})
                 elif kind == "transcript":
                     _persist("interviewer", event["text"])
                     await ws.send_json({"type": "transcript", "text": event["text"]})
