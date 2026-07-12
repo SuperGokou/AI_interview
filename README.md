@@ -17,7 +17,7 @@
 ![Render](https://img.shields.io/badge/Render-Deployable-46E3B7?logo=render&logoColor=111827)
 
 [项目定位](#项目定位) ·
-[线上 Demo](https://frontend-378x0vvu9-xiaming0707-7659s-projects.vercel.app/interview) ·
+[线上 Demo](https://frontend-two-topaz-s822mwtic0.vercel.app/interview) ·
 [系统架构](#系统架构) ·
 [核心能力](#核心能力) ·
 [快速开始](#快速开始) ·
@@ -49,7 +49,7 @@
 
 | 入口 | 默认地址 | 用途 |
 | --- | --- | --- |
-| 线上 Demo | [Vercel Interview Demo](https://frontend-378x0vvu9-xiaming0707-7659s-projects.vercel.app/interview) | 当前已验证可访问的候选人面试演示入口 |
+| 线上 Demo | [Vercel Interview Demo](https://frontend-two-topaz-s822mwtic0.vercel.app/interview) | 当前已验证可访问的候选人面试演示入口 |
 | Render 一体化服务 | `https://cainiaoqing-interview.onrender.com` | 如已启用，可同时承载前端、API 和 WebSocket |
 | 一体化应用 | `http://localhost:8000` | FastAPI 托管 API 与前端构建产物 |
 | 前端开发服务 | `http://localhost:5173` | Vite 本地开发与快速 UI 调试 |
