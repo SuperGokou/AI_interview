@@ -18,6 +18,14 @@ def _fresh_auth_throttle():
     reset_auth_throttle()
 
 
+@pytest.fixture(autouse=True)
+def _no_model_services_for_post_interview_analysis(monkeypatch):
+    """Never reach a real text or embedding service from the test suite, even if
+    the developer's shell has API keys set. Tests that need them inject fakes."""
+    monkeypatch.setattr("app.api.interview_ws.review_client_factory", lambda: None)
+    monkeypatch.setattr("app.api.interview_ws.embedder_factory", lambda: None)
+
+
 @pytest.fixture
 def _engine():
     # StaticPool + 单一内存连接:让所有 session 共享同一个内存库,

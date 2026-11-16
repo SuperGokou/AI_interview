@@ -2,7 +2,7 @@
 
 from collections.abc import Iterator
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import URL
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -68,10 +68,33 @@ engine = _make_engine(get_settings().database_url)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 
+def _add_missing_columns() -> None:
+    """Add nullable columns that newer releases introduced on existing tables.
+
+    The project has no migration tool; create_all never alters a table that
+    already exists. Only nullable columns are added, which is safe on a live
+    database with rows. Anything else still needs a real migration.
+    """
+    inspector = inspect(engine)
+    with engine.begin() as connection:
+        for table in Base.metadata.sorted_tables:
+            if not inspector.has_table(table.name):
+                continue
+            existing = {column["name"] for column in inspector.get_columns(table.name)}
+            for column in table.columns:
+                if column.name in existing or column.primary_key or not column.nullable:
+                    continue
+                column_type = column.type.compile(dialect=engine.dialect)
+                connection.execute(
+                    text(f'ALTER TABLE "{table.name}" ADD COLUMN "{column.name}" {column_type}')
+                )
+
+
 def init_db() -> None:
     """创建所有表(开发期用;生产用迁移)。导入 models 以注册映射。"""
     from app.db import models  # noqa: F401  确保模型已注册到 Base.metadata
     Base.metadata.create_all(bind=engine)
+    _add_missing_columns()
     # create_all skips tables that already exist, so indexes added in a later
     # release would never reach an upgraded database. Create them explicitly.
     for table in Base.metadata.tables.values():

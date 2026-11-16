@@ -7,6 +7,7 @@
 - {"kind": "audio", "data": <pcm bytes>}        面试官语音(PCM16 24kHz)
 - {"kind": "transcript", "text": <str>}         面试官文字转写
 - {"kind": "user_transcript", "text": <str>}    候选人语音转写(SDK 支持时)
+- {"kind": "speech_started"}                     服务端 VAD 检测到候选人开口
 - {"kind": "close"}                              会话关闭
 """
 
@@ -44,6 +45,7 @@ _EVT_TRANSCRIPT_DELTA = "response.audio_transcript.delta"
 _EVT_TRANSCRIPT_DONE = "response.audio_transcript.done"
 _EVT_RESPONSE_DONE = "response.done"
 _EVT_USER_TRANSCRIPT = "conversation.item.input_audio_transcription.completed"
+_EVT_SPEECH_STARTED = "input_audio_buffer.speech_started"
 
 
 def _default_factory(model: str, callback, url: str, api_key: str = ""):
@@ -106,6 +108,8 @@ class InterviewBridge:
             self._flush_transcript()
         elif event_type == _EVT_USER_TRANSCRIPT:
             self._emit({"kind": "user_transcript", "text": message.get("transcript", "")})
+        elif event_type == _EVT_SPEECH_STARTED:
+            self._emit({"kind": "speech_started"})
 
     async def connect(self) -> None:
         self._loop = asyncio.get_running_loop()

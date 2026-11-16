@@ -109,6 +109,11 @@ export const api = {
     adminReq<Question>(`/api/jobs/${jobId}/questions`, { method: 'POST', body: JSON.stringify(body) }),
   updateQuestion: (id: number, body: Partial<Omit<Question, 'id' | 'job_id'>>) =>
     adminReq<Question>(`/api/questions/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  generateQuestions: (jobId: number, count: number, focus: string) =>
+    adminReq<Question[]>(`/api/jobs/${jobId}/questions/generate`, {
+      method: 'POST',
+      body: JSON.stringify({ count, focus }),
+    }),
   deleteQuestion: (id: number) =>
     adminReq<{ ok: boolean }>(`/api/questions/${id}`, { method: 'DELETE' }),
 

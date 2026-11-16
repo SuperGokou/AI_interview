@@ -28,10 +28,12 @@ export interface Question {
   id: number;
   job_id: number;
   prompt: string;
-  key_points: string;
-  reference_answer: string;
+  key_points: string | null;
+  reference_answer: string | null;
   difficulty: Difficulty;
   is_probe: boolean;
+  /** Suggested follow-up questions for the interviewer, one per line. */
+  follow_ups: string | null;
 }
 
 export interface SessionListItem {

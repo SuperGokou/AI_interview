@@ -15,7 +15,10 @@ interface QFormState {
   reference_answer: string;
   difficulty: Difficulty;
   is_probe: boolean;
+  follow_ups: string;
 }
+
+const GENERATE_COUNTS = [3, 5, 8];
 
 const EMPTY_QFORM: QFormState = {
   prompt: '',
@@ -23,15 +26,17 @@ const EMPTY_QFORM: QFormState = {
   reference_answer: '',
   difficulty: '初级',
   is_probe: false,
+  follow_ups: '',
 };
 
 function questionToForm(q: Question): QFormState {
   return {
     prompt: q.prompt,
-    key_points: q.key_points,
-    reference_answer: q.reference_answer,
+    key_points: q.key_points ?? '',
+    reference_answer: q.reference_answer ?? '',
     difficulty: q.difficulty,
     is_probe: q.is_probe,
+    follow_ups: q.follow_ups ?? '',
   };
 }
 
@@ -45,6 +50,7 @@ interface QFormProps {
 function QuestionForm({ initial, onSave, onCancel, saving }: QFormProps) {
   const [form, setForm] = useState<QFormState>(initial);
   const diffId = useId();
+  const followId = useId();
   const inputStyle: React.CSSProperties = {
     background: '#0E1525',
     border: '1px solid #243049',
@@ -105,6 +111,20 @@ function QuestionForm({ initial, onSave, onCancel, saving }: QFormProps) {
         />
       </div>
 
+      <div className="flex flex-col gap-1.5 md:col-span-2">
+        <label htmlFor={followId} className="text-sm font-medium text-muted">
+          参考追问（每行一个，面试官会优先使用）
+        </label>
+        <textarea
+          id={followId}
+          value={form.follow_ups}
+          onChange={(e) => setForm({ ...form, follow_ups: e.target.value })}
+          placeholder={'例：你们最大的表有多少行？\n当时为什么没有选另一种方案？'}
+          rows={3}
+          style={{ ...inputStyle, resize: 'vertical' }}
+        />
+      </div>
+
       <div className="flex items-center gap-3 md:col-span-2">
         <input
           type="checkbox"
@@ -134,7 +154,12 @@ export default function Questions() {
   const [showForm, setShowForm] = useState(false);
   const [editingQ, setEditingQ] = useState<Question | null>(null);
   const [saving, setSaving] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [genCount, setGenCount] = useState(5);
+  const [genFocus, setGenFocus] = useState('');
+  const [notice, setNotice] = useState<string | null>(null);
   const jobSelectId = useId();
+  const genCountId = useId();
 
   useEffect(() => {
     api.listJobs()
@@ -159,7 +184,24 @@ export default function Questions() {
     setSelectedJobId(id);
     setShowForm(false);
     setEditingQ(null);
+    setNotice(null);
     loadQuestions(id);
+  }
+
+  async function handleGenerate() {
+    if (!selectedJobId || generating) return;
+    setGenerating(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const created = await api.generateQuestions(selectedJobId, genCount, genFocus.trim());
+      setNotice(`已生成 ${created.length} 道题目草稿，请逐题检查考点、参考答案和追问后再用于面试。`);
+      loadQuestions(selectedJobId);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '生成失败');
+    } finally {
+      setGenerating(false);
+    }
   }
 
   async function handleSave(form: QFormState) {
@@ -171,6 +213,7 @@ export default function Questions() {
       reference_answer: form.reference_answer,
       difficulty: form.difficulty,
       is_probe: form.is_probe,
+      follow_ups: form.follow_ups.trim() || null,
     };
     try {
       if (editingQ) {
@@ -248,6 +291,41 @@ export default function Questions() {
         </div>
       </Card>
 
+      {notice && <p className="text-green text-sm mb-4">{notice}</p>}
+
+      {selectedJobId && (
+        <Card className="mb-6">
+          <h2 className="text-sm font-semibold text-text">AI 生成题目</h2>
+          <p className="text-xs text-muted mt-1 mb-4">
+            根据职位描述起草带考点、参考答案和追问的题目，直接加入下方题库。生成约需半分钟。
+          </p>
+          <div className="flex items-end gap-3 flex-wrap">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor={genCountId} className="text-sm font-medium text-muted">数量</label>
+              <select
+                id={genCountId}
+                value={genCount}
+                onChange={(e) => setGenCount(Number(e.target.value))}
+                style={{ ...inputStyle, minWidth: 96 }}
+              >
+                {GENERATE_COUNTS.map((n) => <option key={n} value={n}>{n} 道</option>)}
+              </select>
+            </div>
+            <div className="flex-1 min-w-[220px]">
+              <Field
+                label="侧重方向（可选）"
+                value={genFocus}
+                onChange={(e) => setGenFocus(e.target.value)}
+                placeholder="例：数据库与高并发"
+              />
+            </div>
+            <Button onClick={() => void handleGenerate()} disabled={generating}>
+              {generating ? '生成中…' : '生成题目'}
+            </Button>
+          </div>
+        </Card>
+      )}
+
       {selectedJobId && showForm && !editingQ && (
         <Card className="mb-6">
           <h2 className="text-sm font-semibold text-text">新建题目</h2>
@@ -293,6 +371,11 @@ export default function Questions() {
                   <p className="text-sm text-text leading-relaxed">{q.prompt}</p>
                   {q.key_points && (
                     <p className="text-xs text-muted mt-1">考点：{q.key_points}</p>
+                  )}
+                  {q.follow_ups && (
+                    <p className="text-xs text-muted mt-1 whitespace-pre-wrap">
+                      追问：{q.follow_ups.split('\n').filter(Boolean).join(' / ')}
+                    </p>
                   )}
                 </div>
                 <div className="flex gap-2 shrink-0">

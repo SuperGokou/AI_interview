@@ -33,6 +33,10 @@ class Settings:
     heygen_api_key: str
     heygen_avatar_id: str
     heygen_base_url: str
+    # 文本向量(AI 答案相似度);OpenAI 兼容接口
+    embedding_api_key: str
+    embedding_base_url: str
+    embedding_model: str
     # 数据库
     database_url: str
 
@@ -61,5 +65,11 @@ def get_settings() -> Settings:
         heygen_api_key=os.getenv("HEYGEN_API_KEY", ""),
         heygen_avatar_id=os.getenv("HEYGEN_AVATAR_ID", "Anna_public_3_20240108"),
         heygen_base_url=os.getenv("HEYGEN_BASE_URL", "https://api.heygen.com"),
+        # 默认复用百炼的 key;也可指向自建的开源向量模型服务(如 bge-m3)。
+        embedding_api_key=os.getenv("EMBEDDING_API_KEY") or dashscope_key,
+        embedding_base_url=os.getenv(
+            "EMBEDDING_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        ),
+        embedding_model=os.getenv("EMBEDDING_MODEL", "text-embedding-v3"),
         database_url=os.getenv("DATABASE_URL", default_db),
     )

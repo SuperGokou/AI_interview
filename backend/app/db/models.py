@@ -51,6 +51,7 @@ class Question(Base):
     reference_answer: Mapped[str | None] = mapped_column(Text, nullable=True)  # 标答
     difficulty: Mapped[str] = mapped_column(String(16), default="中级")          # 初级/中级/高级
     is_probe: Mapped[bool] = mapped_column(Boolean, default=False)             # 是否防作弊探针题
+    follow_ups: Mapped[str | None] = mapped_column(Text, nullable=True)        # 参考追问,每行一个
     job: Mapped["Job"] = relationship(back_populates="questions")
 
 
@@ -79,6 +80,16 @@ class Transcript(Base):
     role: Mapped[str] = mapped_column(String(16))  # interviewer / candidate
     text: Mapped[str] = mapped_column(Text)
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+
+class AnswerMetric(Base):
+    """Per-utterance measurements for a candidate transcript row (new table, so
+    existing databases pick it up through create_all without a migration)."""
+    __tablename__ = "answer_metrics"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("interview_sessions.id"), index=True)
+    transcript_id: Mapped[int] = mapped_column(ForeignKey("transcripts.id"), unique=True)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 面试官说完 → 候选人开口
 
 
 class Recording(Base):

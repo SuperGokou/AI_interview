@@ -17,9 +17,13 @@ from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from app.config import get_settings
+from app.core.answer_timing import TurnTimer
 from app.core.cheat_detection import AiTextDetector
 from app.core.cheat_store import integrity_level, record_cheat_event
+from app.core.deepseek_client import DeepSeekClient
+from app.core.embeddings import EmbeddingNotConfigured, OpenAICompatibleEmbedder
 from app.core.integrity import interpret_visual_observation
+from app.core.integrity_analysis import analyze_integrity
 from app.core.interview_bridge import InterviewBridge
 from app.core.report_store import build_report
 from app.core.scoring import ReportGenerator
@@ -38,6 +42,24 @@ ai_detector_factory = AiTextDetector
 
 # 模块级,便于测试 monkeypatch 注入 Fake report generator。
 report_generator_factory = ReportGenerator
+
+
+
+def _default_review_client():
+    """Text model for the post-interview analysis; None when no key is configured."""
+    return DeepSeekClient() if get_settings().deepseek_api_key else None
+
+
+def _default_embedder():
+    try:
+        return OpenAICompatibleEmbedder()
+    except EmbeddingNotConfigured:
+        return None
+
+
+# 模块级,便于测试注入;返回 None 表示跳过对应的面试后信号。
+review_client_factory = _default_review_client
+embedder_factory = _default_embedder
 
 # 回答 AI 味置信度阈值,超过才记一次作弊事件。
 _AI_TEXT_THRESHOLD = 0.6
@@ -106,13 +128,22 @@ def _detect_ai_text(bind, session_id: int, detector, text: str) -> str | None:
 
 
 def _generate_report(bind, session_id: int) -> None:
-    """Worker-thread job: score the interview unless nothing was said."""
+    """Worker-thread job: analyse integrity, then score, unless nothing was said."""
     with Session(bind=bind) as report_db:
         has_transcript = (
             report_db.query(models.Transcript.id).filter_by(session_id=session_id).first()
         )
         if has_transcript is None:
             return  # nothing to score; do not spend a model call on an empty interview
+        try:
+            # Runs first so the report's integrity summary includes these signals.
+            analyze_integrity(
+                report_db, session_id,
+                client=review_client_factory(), embedder=embedder_factory(),
+            )
+        except Exception:
+            report_db.rollback()
+            logger.exception("post-interview integrity analysis failed")
         build_report(report_db, session_id, report_generator_factory())
 
 
@@ -135,7 +166,15 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
         return
     candidate = db.get(models.Candidate, sess.candidate_id)
     questions = db.query(models.Question).filter_by(job_id=job.id).all()
-    q_dicts = [{"prompt": q.prompt, "difficulty": q.difficulty} for q in questions]
+    q_dicts = [
+        {
+            "prompt": q.prompt,
+            "difficulty": q.difficulty,
+            "key_points": q.key_points,
+            "follow_ups": q.follow_ups,
+        }
+        for q in questions
+    ]
     instructions = build_interviewer_instructions(
         job_title=job.title,
         jd=job.jd,
@@ -169,8 +208,19 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
     opener_text = opener_for(job.language)
     max_seconds = max(1, job.duration_minutes) * 60 + _OVERTIME_GRACE_S
 
-    def _persist(role: str, text: str) -> None:
-        db.add(models.Transcript(session_id=session_id, role=role, text=text))
+    timer = TurnTimer(sample_rate=settings.output_sample_rate)
+    clock = asyncio.get_running_loop().time
+
+    def _persist(role: str, text: str, *, latency_ms: int | None = None) -> None:
+        row = models.Transcript(session_id=session_id, role=role, text=text)
+        db.add(row)
+        if latency_ms is not None:
+            db.flush()  # assigns row.id
+            db.add(
+                models.AnswerMetric(
+                    session_id=session_id, transcript_id=row.id, latency_ms=latency_ms
+                )
+            )
         db.commit()
 
     detector = ai_detector_factory()
@@ -200,6 +250,7 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                 event = await bridge.events()
                 kind = event.get("kind")
                 if kind == "audio":
+                    timer.on_interviewer_audio(len(event["data"]), clock())
                     await ws.send_json(
                         {"type": "audio", "data": base64.b64encode(event["data"]).decode()}
                     )
@@ -210,9 +261,13 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                     await ws.send_json({"type": "transcript", "text": event["text"]})
                 elif kind == "user_transcript":
                     text = event["text"]
-                    _persist("candidate", text)
+                    _persist(
+                        "candidate", text, latency_ms=timer.on_candidate_transcript().latency_ms
+                    )
                     await ws.send_json({"type": "user_transcript", "text": text})
                     _spawn(check_ai_text(text))
+                elif kind == "speech_started":
+                    timer.on_candidate_speech_started(clock())
                 elif kind == "vision":
                     # 注:真实 Qwen 视觉观测的产出留待 Phase 6 联调;这里建好处理管线。
                     signals = interpret_visual_observation(

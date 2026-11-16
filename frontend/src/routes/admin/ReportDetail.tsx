@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { AdminShell, Card, Button, Pill } from '../../ui';
-import { api } from '../../lib/api';
+import { api, ApiError } from '../../lib/api';
 import type { ReportOut, CheatResponse, RiskLevel, IntegrityLevel, Transcript } from '../../types';
 
 const INTEGRITY_COLOR: Record<IntegrityLevel, string> = {
@@ -32,6 +32,19 @@ const SEVERITY_COLOR: Record<RiskLevel, string> = {
   low: '#8593AD',
   medium: '#FACC15',
   high: '#FB5070',
+};
+
+// Human-readable names for integrity event kinds; unknown kinds fall back to the raw value.
+const EVENT_LABEL: Record<string, string> = {
+  ai_text: '回答疑似照读 AI 稿',
+  latency_pattern: '回答前停顿模式异常',
+  probe_gap: '追问表现落差',
+  ai_similarity: '回答与 AI 答案高度相似',
+  gaze_off_screen: '视线长时间离开屏幕',
+  reading_motion: '疑似阅读动作',
+  multi_person: '画面中出现多人',
+  person_absent: '候选人离开画面',
+  suspicious_object: '画面中有可疑物品',
 };
 
 interface ScoreCardProps {
@@ -66,7 +79,7 @@ export default function ReportDetail() {
     setNotFound(false);
     Promise.all([
       api.getReport(t).catch((err: unknown) => {
-        if (err instanceof Error && err.message.includes('404')) {
+        if (err instanceof ApiError && err.status === 404) {
           setNotFound(true);
           return null;
         }
@@ -216,6 +229,10 @@ export default function ReportDetail() {
             )}
           </div>
 
+          <p className="text-xs text-muted mb-4">
+            以下为自动检测到的线索，仅供人工复核，不代表作弊结论。
+          </p>
+
           {cheat.events.length === 0 ? (
             <p className="text-muted text-sm py-4 text-center">未检测到异常事件。</p>
           ) : (
@@ -241,7 +258,7 @@ export default function ReportDetail() {
                     <div className="flex items-start gap-3 flex-wrap">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <span className="text-sm font-medium text-text">{ev.kind}</span>
+                          <span className="text-sm font-medium text-text">{EVENT_LABEL[ev.kind] ?? ev.kind}</span>
                           <Pill color={SEVERITY_COLOR[ev.severity]} dot={false}>
                             {ev.severity === 'low' ? '低' : ev.severity === 'medium' ? '中' : '高'}
                           </Pill>
@@ -250,7 +267,7 @@ export default function ReportDetail() {
                           )}
                         </div>
                         {ev.evidence && (
-                          <p className="text-xs text-muted">{ev.evidence}</p>
+                          <p className="text-xs text-muted leading-relaxed whitespace-pre-wrap">{ev.evidence}</p>
                         )}
                       </div>
                     </div>

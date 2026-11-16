@@ -9,18 +9,18 @@ from typing import Optional
 from app.config import get_settings
 
 
-def _default_client(api_key: str, base_url: str):
+def _default_client(api_key: str, base_url: str, timeout: float = 30.0):
     from openai import OpenAI  # 延迟导入,避免测试环境强依赖
 
-    return OpenAI(api_key=api_key, base_url=base_url, timeout=30.0, max_retries=0)
+    return OpenAI(api_key=api_key, base_url=base_url, timeout=timeout, max_retries=0)
 
 
 class DeepSeekClient:
-    def __init__(self, *, model: Optional[str] = None, client=None):
+    def __init__(self, *, model: Optional[str] = None, client=None, timeout: float = 30.0):
         settings = get_settings()
         self._model = model or settings.deepseek_model
         self._client = client or _default_client(
-            settings.deepseek_api_key, settings.deepseek_base_url
+            settings.deepseek_api_key, settings.deepseek_base_url, timeout
         )
 
     def complete(self, *, system: str, user: str, temperature: float = 0.3) -> str:
