@@ -124,6 +124,11 @@ class InterviewBridge:
         self._conv = self._factory(
             model=self._model, callback=_CB(), url=self._url, api_key=self._api_key
         )
+        # The SDK handshake is blocking network I/O; keep it off the event loop so
+        # one candidate connecting cannot freeze audio for every other interview.
+        await asyncio.to_thread(self._open_conversation)
+
+    def _open_conversation(self) -> None:
         self._conv.connect()
         self._conv.update_session(
             output_modalities=[MultiModality.AUDIO, MultiModality.TEXT],

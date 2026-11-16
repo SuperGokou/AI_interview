@@ -1,7 +1,7 @@
 """题库 CRUD REST(单一职责:面试题增删改查)。"""
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.db import models
@@ -16,10 +16,10 @@ router = APIRouter(prefix="/api")
 
 
 class QuestionIn(BaseModel):
-    prompt: str
-    key_points: str | None = None
-    reference_answer: str | None = None
-    difficulty: str = "中级"
+    prompt: str = Field(min_length=1, max_length=4_000)
+    key_points: str | None = Field(default=None, max_length=4_000)
+    reference_answer: str | None = Field(default=None, max_length=8_000)
+    difficulty: str = Field(default="中级", min_length=1, max_length=16)
     is_probe: bool = False
 
 
@@ -87,7 +87,6 @@ def list_questions(job_id: int, db: Session = Depends(get_db)):
 def create_question(
     job_id: int, body: QuestionIn, db: Session = Depends(get_db)
 ):
-    # TODO: HR auth
     _get_job_or_404(job_id, db)
     q = models.Question(
         job_id=job_id,
@@ -106,7 +105,6 @@ def create_question(
 def update_question(
     question_id: int, body: QuestionIn, db: Session = Depends(get_db)
 ):
-    # TODO: HR auth
     q = _get_question_or_404(question_id, db)
     q.prompt = body.prompt
     q.key_points = body.key_points
@@ -119,7 +117,6 @@ def update_question(
 
 @router.delete("/questions/{question_id}")
 def delete_question(question_id: int, db: Session = Depends(get_db)):
-    # TODO: HR auth
     q = _get_question_or_404(question_id, db)
     db.delete(q)
     db.commit()

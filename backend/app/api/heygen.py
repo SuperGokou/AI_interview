@@ -1,10 +1,13 @@
 """HeyGen 流式数字人:服务端用 API key 换取浏览器用的短时会话 token。"""
 
+import logging
+
 import httpx
 from fastapi import APIRouter, HTTPException
 
 import app.config as _config
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/heygen")
 
 # 模块级,便于测试注入 fake transport。
@@ -26,7 +29,9 @@ def create_token() -> dict:
             resp.raise_for_status()
             data = resp.json()
     except Exception as exc:  # 网络/上游错误 → 502
-        raise HTTPException(status_code=502, detail=f"HeyGen token 获取失败: {exc}")
+        # Upstream error text can echo request details; keep it in the server log only.
+        logger.exception("HeyGen token request failed")
+        raise HTTPException(status_code=502, detail="HeyGen token 获取失败") from exc
     token = (data.get("data") or {}).get("token")
     if not token:
         raise HTTPException(status_code=502, detail="HeyGen 返回无 token")

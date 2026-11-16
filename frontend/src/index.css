@@ -16,7 +16,7 @@ body {
   margin: 0;
   background: #0a0f1c;
   color: #e8eef9;
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 

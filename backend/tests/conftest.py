@@ -8,6 +8,14 @@ from sqlalchemy.pool import StaticPool
 
 from app.main import app
 from app.db.base import Base, get_db
+from app.security import reset_auth_throttle
+
+
+@pytest.fixture(autouse=True)
+def _fresh_auth_throttle():
+    reset_auth_throttle()
+    yield
+    reset_auth_throttle()
 
 
 @pytest.fixture

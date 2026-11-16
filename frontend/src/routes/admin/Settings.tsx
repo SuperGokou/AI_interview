@@ -52,7 +52,7 @@ export default function Settings() {
             <p className="text-[#FB5070] text-sm py-2">无法获取系统状态(后端未连接)</p>
           )}
           <StatusRow
-            label="数据库 (Supabase Postgres)"
+            label="数据库"
             ok={health?.database === 'up'}
             okText="已连接"
             badText="未连接"
@@ -106,8 +106,8 @@ export default function Settings() {
         <Card className="p-6">
           <h2 className="text-base font-semibold text-text mb-2">账号</h2>
           <div className="flex items-center justify-between">
-            <span className="text-text text-sm">HR · 坤耀</span>
-            <span className="text-muted text-xs">HR 登录鉴权即将上线</span>
+            <span className="text-text text-sm">管理员 · 坤耀</span>
+            <span className="text-muted text-xs">共享管理员凭据(HTTP Basic),在服务器 .env 中配置</span>
           </div>
         </Card>
       </div>

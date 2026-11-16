@@ -1,3 +1,12 @@
 {$DOMAIN} {
+    # Compress text responses (JS/CSS/JSON/WASM). Media files are already compressed.
+    encode zstd gzip
+
+    header {
+        # Browsers must keep using HTTPS: camera and microphone only work in a secure context.
+        Strict-Transport-Security "max-age=31536000"
+        -Server
+    }
+
     reverse_proxy app:8000
 }

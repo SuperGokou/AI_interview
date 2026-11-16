@@ -15,8 +15,6 @@ import type {
   SupervisorTranscriptFeed,
 } from '../types';
 
-const ADMIN_KEY_STORAGE_KEY = 'kunyao.adminKey';
-
 function readEnv(name: string): string {
   const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
   return env?.[name]?.trim() ?? '';
@@ -31,34 +29,45 @@ function apiUrl(path: string): string {
   return origin ? `${origin}${path}` : path;
 }
 
-function readAdminKey(): string {
-  const envKey = readEnv('VITE_ADMIN_API_KEY');
-  if (envKey) return envKey;
-  if (typeof window === 'undefined') return '';
-  return window.localStorage.getItem(ADMIN_KEY_STORAGE_KEY)?.trim() ?? '';
+/** Error carrying the HTTP status and the server's own explanation when it sent one. */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
 }
 
-function adminHeaders(): Record<string, string> {
-  const key = readAdminKey();
-  return key ? { 'X-Admin-Key': key } : {};
+async function errorMessage(res: Response, path: string): Promise<string> {
+  try {
+    const body: unknown = await res.json();
+    if (body && typeof body === 'object' && 'detail' in body) {
+      const detail = (body as { detail: unknown }).detail;
+      if (typeof detail === 'string' && detail) return detail;
+    }
+  } catch {
+    // Non-JSON error body: fall through to the generic message.
+  }
+  return `API ${path} failed: ${res.status}`;
 }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const url = apiUrl(path);
-  const res = await fetch(url, {
+  const res = await fetch(apiUrl(path), {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   });
-  if (!res.ok) throw new Error(`API ${path} failed: ${res.status}`);
+  if (!res.ok) throw new ApiError(await errorMessage(res, path), res.status);
   return res.json() as Promise<T>;
 }
 
-async function adminReq<T>(path: string, init?: RequestInit): Promise<T> {
-  return req<T>(path, {
-    ...init,
-    headers: { ...adminHeaders(), ...(init?.headers ?? {}) },
-  });
-}
+// Admin endpoints are protected by HTTP Basic auth at the server boundary; the
+// browser attaches the credentials itself, so no key is stored or sent from JS.
+const adminReq = req;
+
+/** Link tokens are URL-safe today, but never trust that when building a path. */
+const t = encodeURIComponent;
 
 export const api = {
   health: () => req<HealthResponse>('/api/health'),
@@ -69,21 +78,21 @@ export const api = {
       body: JSON.stringify({ job_id, candidate_name }),
     }),
 
-  getSession: (token: string) => req<SessionInfo>(`/api/sessions/${token}`),
+  getSession: (token: string) => req<SessionInfo>(`/api/sessions/${t(token)}`),
 
   consent: (token: string) =>
-    req<{ ok: boolean; consented: boolean }>(`/api/sessions/${token}/consent`, {
+    req<{ ok: boolean; consented: boolean }>(`/api/sessions/${t(token)}/consent`, {
       method: 'POST',
     }),
 
   getCheat: (token: string) =>
-    adminReq<CheatResponse>(`/api/sessions/${token}/cheat`),
+    adminReq<CheatResponse>(`/api/sessions/${t(token)}/cheat`),
 
   createReport: (token: string) =>
-    adminReq<ReportOut>(`/api/sessions/${token}/report`, { method: 'POST' }),
+    adminReq<ReportOut>(`/api/sessions/${t(token)}/report`, { method: 'POST' }),
 
   getReport: (token: string) =>
-    adminReq<ReportOut>(`/api/sessions/${token}/report`),
+    adminReq<ReportOut>(`/api/sessions/${t(token)}/report`),
 
   // Jobs
   listJobs: () => adminReq<Job[]>('/api/jobs'),
@@ -111,22 +120,22 @@ export const api = {
 
   // Transcripts
   listTranscripts: (token: string) =>
-    adminReq<Transcript[]>(`/api/sessions/${token}/transcripts`),
+    adminReq<Transcript[]>(`/api/sessions/${t(token)}/transcripts`),
 
   createSupervisorLinks: (token: string, count = 1, labels?: string[]) =>
-    adminReq<CreateSupervisorLinksResponse>(`/api/sessions/${token}/supervisors`, {
+    adminReq<CreateSupervisorLinksResponse>(`/api/sessions/${t(token)}/supervisors`, {
       method: 'POST',
       body: JSON.stringify(labels?.length ? { labels } : { count }),
     }),
 
   listSupervisorLinks: (token: string) =>
-    adminReq<SupervisorLink[]>(`/api/sessions/${token}/supervisors`),
+    adminReq<SupervisorLink[]>(`/api/sessions/${t(token)}/supervisors`),
 
   getSupervisorSession: (token: string) =>
-    req<SupervisorSessionInfo>(`/api/supervisors/${token}`),
+    req<SupervisorSessionInfo>(`/api/supervisors/${t(token)}`),
 
   listSupervisorTranscripts: (token: string) =>
-    req<SupervisorTranscriptFeed>(`/api/supervisors/${token}/transcripts`),
+    req<SupervisorTranscriptFeed>(`/api/supervisors/${t(token)}/transcripts`),
 };
 
 export function interviewWsUrl(token: string): string {

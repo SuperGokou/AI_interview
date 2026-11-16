@@ -28,9 +28,10 @@ test('candidate landing route renders', () => {
   expect(screen.getAllByText(/坤耀/).length).toBeGreaterThan(0);
 });
 
-test('admin dashboard route renders', () => {
+test('admin dashboard route renders', async () => {
   renderAt('/admin');
-  // AdminShell renders the brand in sidebar + mobile bar; page renders h1 "仪表盘"
+  // Admin routes are code-split, so the page arrives asynchronously.
+  expect(await screen.findByRole('heading', { name: /仪表盘/ })).toBeInTheDocument();
+  // AdminShell renders the brand in sidebar + mobile bar.
   expect(screen.getAllByText(/坤耀/).length).toBeGreaterThan(0);
-  expect(screen.getByRole('heading', { name: /仪表盘/ })).toBeInTheDocument();
 });

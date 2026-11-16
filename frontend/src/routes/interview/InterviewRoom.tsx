@@ -28,7 +28,7 @@ type LandingVideoKind = keyof typeof LANDING_VIDEOS;
  *   initialSeconds: Seconds to display before the interview starts.
  *
  * Returns:
- *   A `MM:SS` string for display in the top-right timer pill.
+ *   The `MM:SS` label for the timer pill and whether a running countdown hit zero.
  */
 function useTimer(running: boolean, initialSeconds = 30 * 60) {
   const [seconds, setSeconds] = useState(initialSeconds);
@@ -46,7 +46,7 @@ function useTimer(running: boolean, initialSeconds = 30 * 60) {
 
   const mm = String(Math.floor(seconds / 60)).padStart(2, '0');
   const ss = String(seconds % 60).padStart(2, '0');
-  return `${mm}:${ss}`;
+  return { label: `${mm}:${ss}`, expired: running && seconds === 0 };
 }
 
 /**
@@ -312,7 +312,7 @@ export default function InterviewRoom() {
     },
   });
   const [durationSeconds, setDurationSeconds] = useState(30 * 60);
-  const timer = useTimer(session.active, durationSeconds);
+  const { label: timer, expired: timeExpired } = useTimer(session.active, durationSeconds);
   const [startError, setStartError] = useState('');
   const [showOpeningLine, setShowOpeningLine] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
@@ -422,6 +422,14 @@ export default function InterviewRoom() {
     setStartError('');
     setAvatarState('idle');
   };
+
+  // The server enforces the same limit; ending here shows the closing clip
+  // instead of an abrupt disconnect.
+  const handleEndRef = useRef(handleEnd);
+  handleEndRef.current = handleEnd;
+  useEffect(() => {
+    if (timeExpired) handleEndRef.current();
+  }, [timeExpired]);
 
   const displayError = session.error || startError || (!showInterviewAvatar && !interviewEnded && welcome.error ? welcome.status : '');
   const integrityDot = INTEGRITY_COLOR[session.integrity];

@@ -30,9 +30,14 @@ def test_spa_cannot_escape_static_root(client, monkeypatch, tmp_path):
     public.mkdir()
     (public / 'index.html').write_text('application')
     (tmp_path / 'secret.txt').write_text('private')
-    (public / 'leak.txt').symlink_to(tmp_path / 'secret.txt')
+    try:
+        (public / 'leak.txt').symlink_to(tmp_path / 'secret.txt')
+        symlinked = True
+    except OSError:  # Windows without the symlink privilege: the other checks still apply
+        symlinked = False
     monkeypatch.setattr(main, 'FRONTEND_DIR', public)
     assert client.get('/%2e%2e/secret.txt').status_code == 404
-    assert client.get('/leak.txt').status_code == 404
+    if symlinked:
+        assert client.get('/leak.txt').status_code == 404
     assert client.get('/api/not-a-route').status_code == 404
     assert client.get('/interview').status_code == 200

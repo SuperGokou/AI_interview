@@ -45,7 +45,7 @@ class Job(Base):
 class Question(Base):
     __tablename__ = "questions"
     id: Mapped[int] = mapped_column(primary_key=True)
-    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id"))
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id"), index=True)
     prompt: Mapped[str] = mapped_column(Text)              # 题干
     key_points: Mapped[str | None] = mapped_column(Text, nullable=True)        # 考点
     reference_answer: Mapped[str | None] = mapped_column(Text, nullable=True)  # 标答
@@ -57,10 +57,10 @@ class Question(Base):
 class InterviewSession(Base):
     __tablename__ = "interview_sessions"
     id: Mapped[int] = mapped_column(primary_key=True)
-    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id"))
-    candidate_id: Mapped[int] = mapped_column(ForeignKey("candidates.id"))
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id"), index=True)
+    candidate_id: Mapped[int] = mapped_column(ForeignKey("candidates.id"), index=True)
     link_token: Mapped[str] = mapped_column(String(64), unique=True)
-    status: Mapped[str] = mapped_column(String(16), default="pending")  # pending/active/done
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)  # pending/active/done
     consented_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -75,7 +75,7 @@ class InterviewSession(Base):
 class Transcript(Base):
     __tablename__ = "transcripts"
     id: Mapped[int] = mapped_column(primary_key=True)
-    session_id: Mapped[int] = mapped_column(ForeignKey("interview_sessions.id"))
+    session_id: Mapped[int] = mapped_column(ForeignKey("interview_sessions.id"), index=True)
     role: Mapped[str] = mapped_column(String(16))  # interviewer / candidate
     text: Mapped[str] = mapped_column(Text)
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
@@ -84,7 +84,7 @@ class Transcript(Base):
 class Recording(Base):
     __tablename__ = "recordings"
     id: Mapped[int] = mapped_column(primary_key=True)
-    session_id: Mapped[int] = mapped_column(ForeignKey("interview_sessions.id"))
+    session_id: Mapped[int] = mapped_column(ForeignKey("interview_sessions.id"), index=True)
     media_ref: Mapped[str] = mapped_column(String(255))  # 文件路径/对象存储 key
     duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
@@ -93,7 +93,7 @@ class Recording(Base):
 class CheatEvent(Base):
     __tablename__ = "cheat_events"
     id: Mapped[int] = mapped_column(primary_key=True)
-    session_id: Mapped[int] = mapped_column(ForeignKey("interview_sessions.id"))
+    session_id: Mapped[int] = mapped_column(ForeignKey("interview_sessions.id"), index=True)
     kind: Mapped[str] = mapped_column(String(32))     # gaze_off_screen / multi_person / ai_text ...
     severity: Mapped[str] = mapped_column(String(8))  # low / medium / high
     evidence: Mapped[str | None] = mapped_column(Text, nullable=True)

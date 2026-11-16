@@ -17,7 +17,14 @@ export default {
         yellow: '#FACC15',
         red: '#FB5070',
       },
-      fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+      // No web-font download: the UI is mostly Chinese (never covered by Inter) and
+      // a third-party font host is slow or blocked on many mainland networks.
+      fontFamily: {
+        sans: [
+          'Inter', 'system-ui', '-apple-system', 'Segoe UI', 'PingFang SC',
+          'Microsoft YaHei', 'Noto Sans CJK SC', 'sans-serif',
+        ],
+      },
       boxShadow: {
         'glow-cyan': '0 0 24px rgba(45,212,239,0.45)',
         'glow-green': '0 0 24px rgba(43,229,164,0.45)',

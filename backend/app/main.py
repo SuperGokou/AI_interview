@@ -57,6 +57,21 @@ if FRONTEND_DIR.is_dir() and (FRONTEND_DIR / "assets").is_dir():
     app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIR / "assets")), name="assets")
 
 
+# Vite fingerprints everything under /assets, so it can be cached forever. Other
+# public files (videos, WASM, model) keep stable names: cache for a day, then revalidate.
+_IMMUTABLE_CACHE = "public, max-age=31536000, immutable"
+_STATIC_CACHE = "public, max-age=86400"
+_NO_CACHE = "no-cache"
+
+
+@app.middleware("http")
+async def cache_fingerprinted_assets(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/assets/") and response.status_code == 200:
+        response.headers["Cache-Control"] = _IMMUTABLE_CACHE
+    return response
+
+
 @app.get("/{full_path:path}")
 async def serve_spa(full_path: str):
     """Serve the SPA: root-level static files (e.g. interviewer.png) else index.html."""
@@ -67,14 +82,16 @@ async def serve_spa(full_path: str):
         if full_path.startswith(("api/", "ws/")):
             raise HTTPException(404, "not found")
         if candidate.is_file():
-            return FileResponse(str(candidate))
+            return FileResponse(str(candidate), headers={"Cache-Control": _STATIC_CACHE})
     index = FRONTEND_DIR / "index.html"
     if index.is_file():
-        return FileResponse(str(index))
+        # Always revalidate the shell so a new deploy is picked up immediately.
+        return FileResponse(str(index), headers={"Cache-Control": _NO_CACHE})
     return {"status": "ok", "service": "坤耀面试系统 API"}
 
 
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+    # Development entry point only; production runs uvicorn from the Dockerfile.
+    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)

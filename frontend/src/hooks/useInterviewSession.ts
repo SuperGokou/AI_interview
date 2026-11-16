@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { arrayBufferToBase64, base64ToArrayBuffer } from '../audio/base64';
 import { floatTo16BitPCM } from '../audio/pcm';
 import { createPlayer, type PcmPlayer } from '../audio/playback';
 import { interviewWsUrl } from '../lib/api';
@@ -9,27 +10,14 @@ const INPUT_SAMPLE_RATE = 16000;
 const OUTPUT_SAMPLE_RATE = 24000;
 const VISION_FPS = 1.5;
 const JPEG_QUALITY = 0.6;
-const WORKLET_URL = new URL('../audio/pcm-worklet.js', import.meta.url);
-
-
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  let binary = '';
-  const bytes = new Uint8Array(buffer);
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
-
-function base64ToArrayBuffer(b64: string): ArrayBuffer {
-  const binary = atob(b64);
-  const buffer = new ArrayBuffer(binary.length);
-  const view = new Uint8Array(buffer);
-  for (let i = 0; i < binary.length; i++) {
-    view[i] = binary.charCodeAt(i);
-  }
-  return buffer;
-}
+// Served from public/ rather than bundled: Vite would inline a file this small
+// as a data: URL, which a strict script-src 'self' policy refuses to load.
+const WORKLET_URL = '/audio/pcm-worklet.js';
+// Camera frames are only used for the model's visual context; 640px wide is
+// plenty and is several times smaller than a raw 720p/1080p frame.
+const MAX_FRAME_WIDTH = 640;
+// Skip a camera frame when the socket is backed up, so audio is never queued behind video.
+const MAX_BUFFERED_BYTES = 512 * 1024;
 
 export interface UseInterviewSessionResult {
   start: (token: string, preStream?: MediaStream) => Promise<void>;
@@ -432,6 +420,7 @@ export function useInterviewSession(
 
       // ~1.5fps camera frame capture; only starts once video is playing.
       let frameTimerStarted = false;
+      const canvas = document.createElement('canvas'); // reused for every frame
       const startFrameCapture = () => {
         if (frameTimerStarted) return;
         frameTimerStarted = true;
@@ -439,12 +428,19 @@ export function useInterviewSession(
           if (!hasVideoTrack || !cameraEnabledRef.current) return;
           const video = videoRef.current;
           if (!video || !video.videoWidth) return;
-          const canvas = document.createElement('canvas');
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
+          const ws = wsRef.current;
+          if (!ws || ws.readyState !== WebSocket.OPEN) return;
+          if (ws.bufferedAmount > MAX_BUFFERED_BYTES) return;
+          const scale = Math.min(1, MAX_FRAME_WIDTH / video.videoWidth);
+          const width = Math.round(video.videoWidth * scale);
+          const height = Math.round(video.videoHeight * scale);
+          if (canvas.width !== width || canvas.height !== height) {
+            canvas.width = width;
+            canvas.height = height;
+          }
           const ctx2d = canvas.getContext('2d');
           if (!ctx2d) return;
-          ctx2d.drawImage(video, 0, 0);
+          ctx2d.drawImage(video, 0, 0, width, height);
           canvas.toBlob(
             (blob) => {
               if (!blob) return;

@@ -4,8 +4,13 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.cheat_store import list_cheat_events
 from app.core.integrity import compute_integrity_level
+from app.core.session_summary import (
+    SessionListItem,
+    load_sessions,
+    severities_by_session,
+    summarize_sessions,
+)
 from app.db import models
 from app.db.base import get_db
 
@@ -17,16 +22,6 @@ router = APIRouter(prefix="/api/dashboard")
 # ---------------------------------------------------------------------------
 
 
-class SessionListItem(BaseModel):
-    token: str
-    candidate_name: str
-    job_title: str
-    status: str
-    integrity_level: str
-    score_overall: int | None
-    created_at: str | None
-
-
 class DashboardStats(BaseModel):
     active_jobs: int
     pending_interviews: int
@@ -35,29 +30,24 @@ class DashboardStats(BaseModel):
     recent: list[SessionListItem]
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+# Job statuses that count as "open": the admin UI writes "active"; older data uses "招聘中".
+_OPEN_JOB_STATUSES = ("active", "招聘中")
+_RECENT_LIMIT = 6
 
 
-def _session_to_item(sess: models.InterviewSession, db: Session) -> SessionListItem:
-    candidate = db.get(models.Candidate, sess.candidate_id)
-    job = db.get(models.Job, sess.job_id)
-    events = list_cheat_events(db, sess.id)
-    integrity_level = compute_integrity_level(events)
-    report = db.query(models.Report).filter_by(session_id=sess.id).first()
-    score_overall = report.score_professional if report else None
-    raw_ts = sess.started_at or sess.consented_at
-    created_at = raw_ts.isoformat() if raw_ts else None
-    return SessionListItem(
-        token=sess.link_token,
-        candidate_name=candidate.name if candidate else "",
-        job_title=job.title if job else "",
-        status=sess.status,
-        integrity_level=integrity_level,
-        score_overall=score_overall,
-        created_at=created_at,
+def _count_high_risk(db: Session) -> int:
+    """Sessions with a red integrity level or a high-risk report (two queries total)."""
+    session_ids = [row[0] for row in db.query(models.InterviewSession.id).all()]
+    severities = severities_by_session(db, session_ids)
+    flagged = {
+        sid for sid, events in severities.items() if compute_integrity_level(events) == "red"
+    }
+    high_reports = db.query(models.Report.session_id).filter(
+        models.Report.ai_risk_level == "high"
     )
+    known = set(session_ids)
+    flagged.update(row[0] for row in high_reports if row[0] in known)
+    return len(flagged)
 
 
 # ---------------------------------------------------------------------------
@@ -68,7 +58,7 @@ def _session_to_item(sess: models.InterviewSession, db: Session) -> SessionListI
 @router.get("/stats", response_model=DashboardStats)
 def get_stats(db: Session = Depends(get_db)):
     active_jobs = (
-        db.query(models.Job).filter(models.Job.status == "招聘中").count()
+        db.query(models.Job).filter(models.Job.status.in_(_OPEN_JOB_STATUSES)).count()
     )
 
     pending_interviews = (
@@ -83,26 +73,8 @@ def get_stats(db: Session = Depends(get_db)):
         .count()
     )
 
-    # High-risk: sessions with red integrity level OR a high-risk report
-    all_sessions = db.query(models.InterviewSession).all()
-    high_risk = 0
-    for sess in all_sessions:
-        events = list_cheat_events(db, sess.id)
-        level = compute_integrity_level(events)
-        if level == "red":
-            high_risk += 1
-            continue
-        report = db.query(models.Report).filter_by(session_id=sess.id).first()
-        if report and report.ai_risk_level == "high":
-            high_risk += 1
-
-    recent_sessions = (
-        db.query(models.InterviewSession)
-        .order_by(models.InterviewSession.id.desc())
-        .limit(6)
-        .all()
-    )
-    recent = [_session_to_item(s, db) for s in recent_sessions]
+    high_risk = _count_high_risk(db)
+    recent = summarize_sessions(db, load_sessions(db, limit=_RECENT_LIMIT))
 
     return DashboardStats(
         active_jobs=active_jobs,

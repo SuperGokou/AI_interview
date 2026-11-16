@@ -2,7 +2,7 @@
 
 from collections.abc import Iterator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.engine import URL
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -13,13 +13,28 @@ class Base(DeclarativeBase):
     pass
 
 
+def _tune_sqlite(dbapi_connection, _record) -> None:
+    """WAL lets a live interview write transcripts while the admin UI reads;
+    busy_timeout makes concurrent writers wait instead of failing with 'database is locked'."""
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA busy_timeout=5000")
+    finally:
+        cursor.close()
+
+
 def _make_engine(database_url: str):
     if database_url.startswith("sqlite"):
-        return create_engine(
+        engine = create_engine(
             database_url,
             connect_args={"check_same_thread": False},
             future=True,
         )
+        if ":memory:" not in database_url:
+            event.listen(engine, "connect", _tune_sqlite)
+        return engine
     # Postgres (e.g. Supabase). Robust parse: last '@' splits creds from host,
     # first ':' splits user from password — tolerates special chars in password.
     scheme, rest = database_url.split("://", 1)
@@ -57,6 +72,11 @@ def init_db() -> None:
     """创建所有表(开发期用;生产用迁移)。导入 models 以注册映射。"""
     from app.db import models  # noqa: F401  确保模型已注册到 Base.metadata
     Base.metadata.create_all(bind=engine)
+    # create_all skips tables that already exist, so indexes added in a later
+    # release would never reach an upgraded database. Create them explicitly.
+    for table in Base.metadata.tables.values():
+        for index in table.indexes:
+            index.create(bind=engine, checkfirst=True)
 
 
 def get_db() -> Iterator[Session]:
