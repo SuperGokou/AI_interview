@@ -32,6 +32,10 @@ def test_default_voice_is_valid(monkeypatch):
     assert s.qwen_voice in config_module.QWEN_VOICES
 
 
-def test_database_url_default_is_sqlite(monkeypatch):
+def test_database_url_fallback_is_sqlite_when_not_set(monkeypatch):
+    # When DATABASE_URL is absent the built-in default is a local sqlite file.
+    # Patch dotenv at the package level so importlib.reload cannot re-inject the var.
+    import dotenv
+    monkeypatch.setattr(dotenv, "load_dotenv", lambda *a, **kw: None)
     s = _fresh_settings(monkeypatch)
     assert s.database_url.startswith("sqlite")

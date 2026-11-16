@@ -5,9 +5,12 @@
 """
 
 import asyncio
+import anyio
 import base64
 import logging
 from datetime import datetime
+
+from starlette.concurrency import run_in_threadpool
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
@@ -17,6 +20,8 @@ from app.core.cheat_detection import AiTextDetector
 from app.core.cheat_store import integrity_level, record_cheat_event
 from app.core.integrity import interpret_visual_observation
 from app.core.interview_bridge import InterviewBridge
+from app.core.report_store import build_report
+from app.core.scoring import ReportGenerator
 from app.db import models
 from app.db.base import get_db
 from app.prompts.interviewer import build_interviewer_instructions, opener_for
@@ -29,6 +34,9 @@ bridge_factory = InterviewBridge
 
 # 模块级,便于测试注入 Fake detector(避免真实 DeepSeek 网络调用)。
 ai_detector_factory = AiTextDetector
+
+# 模块级,便于测试 monkeypatch 注入 Fake report generator。
+report_generator_factory = ReportGenerator
 
 # 回答 AI 味置信度阈值,超过才记一次作弊事件。
 _AI_TEXT_THRESHOLD = 0.6
@@ -93,6 +101,8 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                     await ws.send_json(
                         {"type": "audio", "data": base64.b64encode(event["data"]).decode()}
                     )
+                elif kind == "transcript_delta":
+                    await ws.send_json({"type": "transcript_delta", "text": event["text"]})
                 elif kind == "transcript":
                     _persist("interviewer", event["text"])
                     await ws.send_json({"type": "transcript", "text": event["text"]})
@@ -173,3 +183,14 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
         sess.status = "done"
         sess.ended_at = datetime.utcnow()
         db.commit()
+        try:
+            # Use a separate SQLAlchemy session in the worker. A slow scoring
+            # provider must not block the event loop or another live interview.
+            bind, session_id = db.get_bind(), sess.id
+            def generate_report():
+                with Session(bind=bind) as report_db:
+                    build_report(report_db, session_id, report_generator_factory())
+            with anyio.CancelScope(shield=True):
+                await run_in_threadpool(generate_report)
+        except Exception:
+            logger.exception("auto report generation failed")

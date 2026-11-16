@@ -1,3 +1,4 @@
+import pytest
 from app.core.scoring import ReportGenerator
 
 
@@ -59,9 +60,32 @@ def test_generate_handles_code_fence_and_null_demeanor():
     assert out["score_professional"] == 50
 
 
-def test_generate_unparseable_is_safe():
-    out = ReportGenerator(client=_Fake("这不是 JSON")).generate(
-        job_title="x", jd="y", transcripts=[], questions=[], cheat_summary=""
+def test_generate_invalid_output_does_not_become_a_report():
+    with pytest.raises(ValueError, match="报告"):
+        ReportGenerator(client=_Fake("这不是 JSON")).generate(
+            job_title="x", jd="y", transcripts=[], questions=[]
+        )
+
+
+def test_generate_retries_malformed_json_once():
+    class Responses:
+        def __init__(self): self.responses = iter(["{broken", _GOOD])
+        def complete(self, **kwargs): return next(self.responses)
+    out = ReportGenerator(client=Responses()).generate(
+        job_title="x", jd="y", transcripts=[], questions=[]
     )
-    assert out["overall"] == "评分解析失败"
-    assert out["score_professional"] is None
+    assert out["score_professional"] == 82
+
+
+def test_incomplete_json_is_not_a_successful_report():
+    with pytest.raises(ValueError):
+        ReportGenerator(client=_Fake('{"overall":"ok"}')).generate(
+            job_title="x", jd="y", transcripts=[], questions=[]
+        )
+
+
+def test_text_only_report_does_not_invent_visual_demeanor():
+    out = ReportGenerator(client=_Fake(_GOOD)).generate(
+        job_title="x", jd="y", transcripts=[{"role":"candidate", "text":"回答"}], questions=[]
+    )
+    assert out['score_demeanor'] is None

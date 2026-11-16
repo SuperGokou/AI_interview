@@ -79,3 +79,13 @@ def test_create_report_twice_upserts_single_row(client, db_session, monkeypatch)
     db_session.expire_all()
     rows = db_session.query(models.Report).filter_by(session_id=sid).all()
     assert len(rows) == 1
+
+
+def test_bad_model_output_returns_retryable_error_without_report(client, db_session, monkeypatch):
+    sid = _seed(db_session, token="bad-report")
+    class Bad:
+        def generate(self, **kwargs): raise ValueError('bad model JSON')
+    monkeypatch.setattr('app.api.sessions.report_generator_factory', Bad)
+    response = client.post('/api/sessions/bad-report/report')
+    assert response.status_code == 502
+    assert db_session.query(models.Report).filter_by(session_id=sid).count() == 0

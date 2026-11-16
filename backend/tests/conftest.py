@@ -1,3 +1,5 @@
+import os
+os.environ["PYTHON_DOTENV_DISABLED"] = "1"
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -28,7 +30,12 @@ def _SessionLocal(_engine):
 
 
 @pytest.fixture
-def client(_engine, _SessionLocal):
+def client(_engine, _SessionLocal, monkeypatch):
+    monkeypatch.setenv("ADMIN_PASSWORD", "test-only-admin-password")
+    monkeypatch.setenv("DEV_ENDPOINTS", "true")
+    # Prevent lifespan's init_db() from connecting to Supabase during tests
+    monkeypatch.setattr("app.main.init_db", lambda: None)
+
     def override_get_db():
         db = _SessionLocal()
         try:
@@ -38,6 +45,7 @@ def client(_engine, _SessionLocal):
 
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as c:
+        c.auth = ("admin", "test-only-admin-password")
         yield c
     app.dependency_overrides.clear()
 

@@ -1,6 +1,7 @@
 import asyncio
 
 from app.db import models
+from tests.test_interview_ws import _FakeGenWS
 
 
 def _seed(db_session, token="tok-cheat"):
@@ -57,6 +58,7 @@ class _FakeDetector:
 
 def test_ws_records_vision_and_ai_text_cheat_events(client, db_session, monkeypatch):
     sid = _seed(db_session)
+    monkeypatch.setattr("app.api.interview_ws.report_generator_factory", lambda: _FakeGenWS())
     monkeypatch.setattr("app.api.interview_ws.bridge_factory", _FakeBridge)
     monkeypatch.setattr("app.api.interview_ws.ai_detector_factory", lambda: _FakeDetector())
 

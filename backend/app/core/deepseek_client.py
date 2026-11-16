@@ -12,7 +12,7 @@ from app.config import get_settings
 def _default_client(api_key: str, base_url: str):
     from openai import OpenAI  # 延迟导入,避免测试环境强依赖
 
-    return OpenAI(api_key=api_key, base_url=base_url)
+    return OpenAI(api_key=api_key, base_url=base_url, timeout=30.0, max_retries=0)
 
 
 class DeepSeekClient:
@@ -31,5 +31,7 @@ class DeepSeekClient:
                 {"role": "user", "content": user},
             ],
             temperature=temperature,
+            response_format={"type": "json_object"},
+            max_tokens=4096,
         )
         return resp.choices[0].message.content

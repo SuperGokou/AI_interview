@@ -98,7 +98,10 @@ class InterviewBridge:
             if delta:
                 self._emit({"kind": "audio", "data": base64.b64decode(delta)})
         elif event_type == _EVT_TRANSCRIPT_DELTA:
-            self._transcript_buffer += message.get("delta", "") or ""
+            delta = message.get("delta", "") or ""
+            self._transcript_buffer += delta
+            if delta:
+                self._emit({"kind": "transcript_delta", "text": delta})
         elif event_type in (_EVT_TRANSCRIPT_DONE, _EVT_RESPONSE_DONE):
             self._flush_transcript()
         elif event_type == _EVT_USER_TRANSCRIPT:

@@ -1,4 +1,4 @@
-"""菜鸟庆面试系统 — 配置(单一职责:从环境变量装配 Settings)。"""
+"""坤耀面试系统 — 配置(单一职责:从环境变量装配 Settings)。"""
 
 import os
 from dataclasses import dataclass
@@ -29,6 +29,10 @@ class Settings:
     deepseek_api_key: str
     deepseek_base_url: str
     deepseek_model: str
+    # HeyGen 流式数字人
+    heygen_api_key: str
+    heygen_avatar_id: str
+    heygen_base_url: str
     # 数据库
     database_url: str
 
@@ -43,7 +47,7 @@ def get_settings() -> Settings:
     default_db = f"sqlite:///{BASE_DIR / 'backend' / 'interviewai.db'}"
     return Settings(
         dashscope_api_key=dashscope_key,
-        qwen_model=os.getenv("QWEN_OMNI_MODEL", "qwen3.5-omni-plus-realtime"),
+        qwen_model=os.getenv("QWEN_OMNI_MODEL", "qwen3.8-omni-flash-realtime"),
         qwen_voice=voice,
         qwen_ws_url=os.getenv(
             "QWEN_OMNI_WS_URL", "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"
@@ -54,5 +58,8 @@ def get_settings() -> Settings:
         deepseek_api_key=os.getenv("DEEPSEEK_API_KEY", ""),
         deepseek_base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
         deepseek_model=os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
+        heygen_api_key=os.getenv("HEYGEN_API_KEY", ""),
+        heygen_avatar_id=os.getenv("HEYGEN_AVATAR_ID", "Anna_public_3_20240108"),
+        heygen_base_url=os.getenv("HEYGEN_BASE_URL", "https://api.heygen.com"),
         database_url=os.getenv("DATABASE_URL", default_db),
     )
