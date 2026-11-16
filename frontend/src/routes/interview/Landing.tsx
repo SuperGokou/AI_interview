@@ -22,9 +22,22 @@ export default function Landing() {
         padding: '2rem',
       }}
     >
-      <h1 style={{ color: '#E8EEF9', margin: 0, fontSize: '1.5rem', letterSpacing: '0.05em' }}>
-        菜鸟庆面试 · 候选人入口
-      </h1>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <img
+          src="/kunyao-logo.svg"
+          alt=""
+          aria-hidden="true"
+          style={{
+            width: 56,
+            height: 56,
+            objectFit: 'contain',
+            filter: 'drop-shadow(0 0 18px rgba(126, 221, 255, 0.34))',
+          }}
+        />
+        <h1 style={{ color: '#E8EEF9', margin: 0, fontSize: '1.5rem', letterSpacing: '0.05em' }}>
+          坤耀 · 候选人入口
+        </h1>
+      </div>
 
       <PlasmaOrb size={240} status={status} integrity={integrity} />
 

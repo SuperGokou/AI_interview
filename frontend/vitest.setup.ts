@@ -1,8 +1,7 @@
 import '@testing-library/jest-dom';
 
-// ── jsdom polyfills required by Avatar3D & Three.js ──────────────────────────
+// jsdom polyfills required by canvas-based avatar rendering.
 
-// 1. window.matchMedia (used for prefers-reduced-motion detection)
 if (typeof window.matchMedia === 'undefined') {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
@@ -19,10 +18,6 @@ if (typeof window.matchMedia === 'undefined') {
   });
 }
 
-// 2. HTMLCanvasElement.getContext — jsdom doesn't support WebGL; return a
-//    minimal stub so Three.js WebGLRenderer can be instantiated without
-//    throwing. The canvas mock must also implement getExtension / getParameter
-//    because Three.js probes them during construction.
 const originalGetContext = HTMLCanvasElement.prototype.getContext;
 HTMLCanvasElement.prototype.getContext = function (
   contextId: string,
@@ -88,7 +83,7 @@ HTMLCanvasElement.prototype.getContext = function (
       framebufferTexture2D: () => {},
       framebufferRenderbuffer: () => {},
       createFramebuffer: () => ({}),
-      checkFramebufferStatus: () => 36053, // FRAMEBUFFER_COMPLETE
+      checkFramebufferStatus: () => 36053,
       generateMipmap: () => {},
       getUniformLocation: () => ({}),
       getAttribLocation: () => 0,
@@ -115,13 +110,23 @@ HTMLCanvasElement.prototype.getContext = function (
       isContextLost: () => false,
     };
   }
-  // Fall through to real implementation for 2d, bitmaprenderer, etc.
+
+  if (contextId === '2d') {
+    return {
+      canvas: this,
+      clearRect: () => {},
+      drawImage: () => {},
+      getImageData: (_x: number, _y: number, width: number, height: number) => ({
+        data: new Uint8ClampedArray(Math.max(1, width * height * 4)).fill(128),
+      }),
+      putImageData: () => {},
+    };
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-unsafe-return
   return originalGetContext.call(this, contextId as '2d', ...rest);
 };
 
-// 3. requestAnimationFrame / cancelAnimationFrame — already present in jsdom
-//    but just ensure they exist with no-op fallbacks if somehow absent.
 if (typeof globalThis.requestAnimationFrame === 'undefined') {
   globalThis.requestAnimationFrame = (cb) => setTimeout(cb, 16) as unknown as number;
   globalThis.cancelAnimationFrame = (id) => clearTimeout(id);

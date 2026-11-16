@@ -112,3 +112,13 @@ class Report(Base):
     feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
     overall: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+
+class SupervisorLink(Base):
+    """Separate, read-only bearer links for one interview session."""
+    __tablename__ = "supervisor_links"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("interview_sessions.id"), index=True)
+    token: Mapped[str] = mapped_column(String(64), unique=True)
+    label: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))

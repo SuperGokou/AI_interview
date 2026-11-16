@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import InterviewRoom from './routes/interview/InterviewRoom';
 import Landing from './routes/interview/Landing';
+import SupervisorRoom from './routes/interview/SupervisorRoom';
 import Dashboard from './routes/admin/Dashboard';
 import Jobs from './routes/admin/Jobs';
 import Questions from './routes/admin/Questions';
@@ -15,6 +16,7 @@ export default function App() {
       <Route path="/" element={<Navigate to="/interview" replace />} />
       <Route path="/interview" element={<InterviewRoom />} />
       <Route path="/interview/orb" element={<Landing />} />
+      <Route path="/supervise" element={<SupervisorRoom />} />
       <Route path="/admin" element={<Dashboard />} />
       <Route path="/admin/jobs" element={<Jobs />} />
       <Route path="/admin/questions" element={<Questions />} />

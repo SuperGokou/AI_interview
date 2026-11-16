@@ -207,7 +207,10 @@ def list_transcripts(token: str, db: Session = Depends(get_db)):
 @router.post("/{token}/report", response_model=ReportOut)
 def create_report(token: str, db: Session = Depends(get_db)):
     sess = _get_session_or_404(token, db)
-    report = build_report(db, sess.id, report_generator_factory())
+    try:
+        report = build_report(db, sess.id, report_generator_factory())
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="报告生成失败，请重试。") from exc
     return _report_to_out(report)
 
 

@@ -2,15 +2,67 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: dark; }
-html, body, #root { height: 100%; }
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
 body {
   margin: 0;
-  background: #0A0F1C;
-  color: #E8EEF9;
+  background: #0a0f1c;
+  color: #e8eef9;
   font-family: 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
-@keyframes cnq-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
-@media (prefers-reduced-motion: reduce) { img[alt="AI 面试官 菜鸟庆"] { animation: none !important; } }
+@keyframes avatar-reference-breathe {
+  0% {
+    transform: scale(1.03) translate3d(-0.35%, 0, 0);
+    filter: saturate(0.98) brightness(0.965);
+  }
+
+  50% {
+    transform: scale(1.06) translate3d(0.55%, -1.45%, 0);
+    filter: saturate(1.03) brightness(1.015);
+  }
+
+  100% {
+    transform: scale(1.035) translate3d(0.2%, -0.25%, 0);
+    filter: saturate(0.99) brightness(0.98);
+  }
+}
+
+@keyframes avatar-thinking-sheen {
+  0%,
+  100% {
+    opacity: 0.18;
+    transform: translateY(0);
+  }
+
+  50% {
+    opacity: 0.32;
+    transform: translateY(-1.2%);
+  }
+}
+
+.avatar-reference-breathe {
+  animation: avatar-reference-breathe 4.2s ease-in-out infinite alternate;
+  transform-origin: center top;
+  will-change: transform, filter;
+}
+
+.avatar-thinking-sheen {
+  animation: avatar-thinking-sheen 3.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .avatar-reference-breathe,
+  .avatar-thinking-sheen {
+    animation: none;
+  }
+}

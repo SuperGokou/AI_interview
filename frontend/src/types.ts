@@ -105,3 +105,35 @@ export interface Transcript {
   text: string;
   ts: string | null;
 }
+
+export interface SupervisorLink {
+  token: string;
+  label: string | null;
+  created_at: string | null;
+}
+
+export interface CreateSupervisorLinksResponse {
+  session_token: string;
+  links: SupervisorLink[];
+}
+
+export interface SupervisorPeer {
+  label: string;
+  is_current: boolean;
+}
+
+export interface SupervisorSessionInfo {
+  supervisor_token: string;
+  label: string;
+  session_token: string;
+  status: string;
+  candidate_name: string;
+  job: JobSummary;
+  supervisors: SupervisorPeer[];
+}
+
+export interface SupervisorTranscriptFeed {
+  status: string;
+  live: boolean;
+  transcripts: Transcript[];
+}

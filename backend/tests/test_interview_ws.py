@@ -1,4 +1,5 @@
 import asyncio
+import pytest
 
 from app.db import models
 from app.core.scoring import ReportGenerator
@@ -105,3 +106,25 @@ def test_ws_disconnect_auto_generates_report(client, db_session, monkeypatch):
     report = db_session.query(models.Report).filter_by(session_id=sess_id).first()
     assert report is not None
     assert report.score_professional == 75
+
+
+@pytest.fixture(autouse=True)
+def isolate_model_services(monkeypatch):
+    """Transport tests must not use configured model credentials or network."""
+    monkeypatch.setattr("app.api.interview_ws.ai_detector_factory", lambda: object())
+    monkeypatch.setattr("app.api.interview_ws.report_generator_factory", lambda: _FakeGenWS())
+
+
+def test_auto_report_does_not_block_async_event_loop(client, db_session, monkeypatch):
+    _seed(db_session, token="tok-thread")
+    loops = []
+    class Generator(_FakeGenWS):
+        def generate(self, **kwargs):
+            try: loops.append(asyncio.get_running_loop())
+            except RuntimeError: loops.append(None)
+            return super().generate(**kwargs)
+    monkeypatch.setattr("app.api.interview_ws.bridge_factory", _FakeBridge)
+    monkeypatch.setattr("app.api.interview_ws.report_generator_factory", Generator)
+    with client.websocket_connect("/ws/interview?token=tok-thread") as ws:
+        ws.receive_json()
+    assert loops == [None]

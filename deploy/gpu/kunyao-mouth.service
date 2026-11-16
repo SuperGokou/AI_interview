@@ -1,0 +1,29 @@
+[Unit]
+Description=Kunyao private GPU mouth renderer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kunyao-gpu
+Group=kunyao-gpu
+WorkingDirectory=/opt/kunyao-musetalk/MuseTalk
+EnvironmentFile=/opt/kunyao-musetalk/service.env
+Environment=HF_HUB_OFFLINE=1
+Environment=TRANSFORMERS_OFFLINE=1
+Environment=PYTHONUNBUFFERED=1
+Environment=NUMBA_CACHE_DIR=/opt/kunyao-musetalk/cache/numba
+Environment=HOME=/opt/kunyao-musetalk/cache
+ExecStart=/opt/kunyao-musetalk/venv/bin/python service.py
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/kunyao-musetalk/MuseTalk/results /opt/kunyao-musetalk/cache
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

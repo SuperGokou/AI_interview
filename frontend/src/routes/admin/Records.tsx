@@ -17,15 +17,15 @@ const INTEGRITY_LABEL: Record<IntegrityLevel, string> = {
 };
 
 function statusColor(status: string): string {
-  if (status === 'completed') return '#2BE5A4';
-  if (status === 'in_progress') return '#2DD4EF';
+  if (status === 'completed' || status === 'done') return '#2BE5A4';
+  if (status === 'in_progress' || status === 'active') return '#2DD4EF';
   if (status === 'pending') return '#FACC15';
   return '#8593AD';
 }
 
 function statusLabel(status: string): string {
-  if (status === 'completed') return '已完成';
-  if (status === 'in_progress') return '进行中';
+  if (status === 'completed' || status === 'done') return '已完成';
+  if (status === 'in_progress' || status === 'active') return '进行中';
   if (status === 'pending') return '待面试';
   return status;
 }
@@ -34,6 +34,8 @@ export default function Records() {
   const [sessions, setSessions] = useState<SessionListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [supervisorLinks, setSupervisorLinks] = useState<Record<string, string[]>>({});
+  const [generatingToken, setGeneratingToken] = useState<string | null>(null);
 
   useEffect(() => {
     api.listSessions()
@@ -43,6 +45,22 @@ export default function Records() {
         setLoading(false);
       });
   }, []);
+
+  async function handleCreateSupervisorLink(token: string) {
+    setGeneratingToken(token);
+    try {
+      const res = await api.createSupervisorLinks(token, 1);
+      const links = res.links.map((item) => `${window.location.origin}/supervise?token=${item.token}`);
+      setSupervisorLinks((prev) => ({
+        ...prev,
+        [token]: [...(prev[token] ?? []), ...links],
+      }));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '生成监督链接失败');
+    } finally {
+      setGeneratingToken(null);
+    }
+  }
 
   return (
     <AdminShell active="面试记录">
@@ -95,12 +113,29 @@ export default function Records() {
                       {s.score_overall !== null ? `${s.score_overall}分` : '—'}
                     </td>
                     <td className="py-3">
-                      <Link
-                        to={`/admin/reports/${s.token}`}
-                        className="text-cyan text-xs hover:underline"
-                      >
-                        查看报告
-                      </Link>
+                      <div className="flex min-w-[180px] flex-col gap-2">
+                        <div className="flex items-center gap-3">
+                          <Link
+                            to={`/admin/reports/${s.token}`}
+                            className="text-cyan text-xs hover:underline"
+                          >
+                            查看报告
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => void handleCreateSupervisorLink(s.token)}
+                            disabled={generatingToken === s.token}
+                            className="text-xs text-muted hover:text-cyan disabled:cursor-wait disabled:opacity-50"
+                          >
+                            {generatingToken === s.token ? '生成中…' : '生成监督链接'}
+                          </button>
+                        </div>
+                        {(supervisorLinks[s.token] ?? []).map((link, index) => (
+                          <div key={link} className="break-all rounded-lg bg-surface2 px-2 py-1.5 text-[11px] text-cyan">
+                            监督链接 {index + 1}: {link}
+                          </div>
+                        ))}
+                      </div>
                     </td>
                   </tr>
                 ))}

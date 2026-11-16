@@ -1,4 +1,4 @@
-"""菜鸟庆面试系统 — 配置(单一职责:从环境变量装配 Settings)。"""
+"""坤耀面试系统 — 配置(单一职责:从环境变量装配 Settings)。"""
 
 import os
 from dataclasses import dataclass
@@ -47,7 +47,7 @@ def get_settings() -> Settings:
     default_db = f"sqlite:///{BASE_DIR / 'backend' / 'interviewai.db'}"
     return Settings(
         dashscope_api_key=dashscope_key,
-        qwen_model=os.getenv("QWEN_OMNI_MODEL", "qwen3.5-omni-plus-realtime"),
+        qwen_model=os.getenv("QWEN_OMNI_MODEL", "qwen3.8-omni-flash-realtime"),
         qwen_voice=voice,
         qwen_ws_url=os.getenv(
             "QWEN_OMNI_WS_URL", "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"

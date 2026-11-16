@@ -1,0 +1,14 @@
+[Unit]
+Description=Private encrypted connection to Kunyao GPU
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/ssh -N -T -i /data/projects/kunyao-interview-config/gpu/tunnel_key -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/data/projects/kunyao-interview-config/gpu/known_hosts -L 172.17.0.1:18765:127.0.0.1:8765 -o HostKeyAlias=kunyao-gpu gpu-user@GPU_HOST
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

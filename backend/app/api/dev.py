@@ -71,9 +71,9 @@ def _ensure_demo_job(db: Session) -> models.Job:
 def create_demo_session(db: Session = Depends(get_db)):
     """创建演示会话并返回 {token}。
 
-    仅在 DEV_ENDPOINTS=true 时可用（默认开启，以便本地开发）。
+    仅在 DEV_ENDPOINTS=true 时可用（默认关闭）。
     """
-    if os.getenv("DEV_ENDPOINTS", "true").lower() not in ("1", "true", "yes"):
+    if os.getenv("DEV_ENDPOINTS", "false").lower() not in ("1", "true", "yes"):
         raise HTTPException(status_code=404, detail="not found")
 
     job = _ensure_demo_job(db)

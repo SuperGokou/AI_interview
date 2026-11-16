@@ -1,51 +1,55 @@
 const DEFAULT_OUTPUT_SAMPLE_RATE = 24000;
-
 export interface PcmPlayer {
-  /**
-   * Play a chunk of mono PCM16 audio (as received from the backend, default
-   * 24kHz). Chunks are scheduled back-to-back using an internal cursor so a
-   * burst of frames plays as a continuous stream instead of overlapping at
-   * `currentTime`.
-   */
   playPcm: (pcm: ArrayBuffer, sampleRate?: number) => void;
-  /** Rewind the scheduling cursor (e.g. on teardown or a new turn). */
   reset: () => void;
+  sample: () => { opening: number; playing: boolean };
 }
+export interface PcmPlayerOptions { playbackRate?: number }
 
-/**
- * Create a PCM player bound to a specific AudioContext. The caller owns the
- * context lifecycle (creation and `close()`), which keeps playback resources
- * tied to the active session instead of a module-level singleton.
+/** PCM and mouth envelopes use the same playback clock, never packet arrival time.
+ * Adapted from our KY-BOT frontDesk speech-timeline and lip-motion approach.
+ * This is energy-driven articulation, not phoneme recognition.
  */
-export function createPlayer(ctx: AudioContext): PcmPlayer {
-  let nextPlayTime = 0;
-
-  function playPcm(
-    pcm: ArrayBuffer,
-    sampleRate: number = DEFAULT_OUTPUT_SAMPLE_RATE
-  ): void {
+export function createPlayer(ctx: AudioContext, options: PcmPlayerOptions = {}): PcmPlayer {
+  let nextPlayTime = 0, opening = 0, previousTime = 0;
+  const rate = Math.max(.5, Math.min(2, options.playbackRate ?? 1));
+  const frames: {start:number; end:number; rms:number}[] = [];
+  const sources = new Set<AudioBufferSourceNode>();
+  function playPcm(pcm: ArrayBuffer, sampleRate = DEFAULT_OUTPUT_SAMPLE_RATE) {
     const int16 = new Int16Array(pcm);
-    const float32 = new Float32Array(int16.length);
-    for (let i = 0; i < int16.length; i++) {
-      float32[i] = int16[i] / 0x8000;
-    }
-
-    const buffer = ctx.createBuffer(1, float32.length, sampleRate);
-    buffer.copyToChannel(float32, 0);
-
+    if (!int16.length) return;
+    const samples = Float32Array.from(int16, x=>x/0x8000);
+    const buffer = ctx.createBuffer(1, samples.length, sampleRate);
+    buffer.copyToChannel(samples, 0);
     const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(ctx.destination);
-
-    // Schedule each chunk after the previous one, but never in the past.
-    const startAt = Math.max(ctx.currentTime, nextPlayTime);
-    source.start(startAt);
-    nextPlayTime = startAt + buffer.duration;
+    source.buffer = buffer; source.playbackRate.value = rate;
+    source.connect(ctx.destination); sources.add(source);
+    source.onended = ()=>{ sources.delete(source); source.disconnect(); };
+    const start = Math.max(ctx.currentTime, nextPlayTime);
+    const windowSize = Math.max(1, Math.round(sampleRate*.01));
+    for(let i=0;i<samples.length;i+=windowSize){
+      const end=Math.min(samples.length,i+windowSize);let sum=0,crossings=0;
+      for(let j=i;j<end;j++){sum+=samples[j]**2;if(j>i&&samples[j]*samples[j-1]<0)crossings++;}
+      const articulation=1-.65*Math.min(1,Math.max(0,(crossings/Math.max(1,end-i-1)-.18)/.3));
+      frames.push({start:start+i/sampleRate/rate,end:start+end/sampleRate/rate,rms:Math.sqrt(sum/(end-i))*articulation});
+    }
+    source.start(start); nextPlayTime=start+buffer.duration/rate;
   }
-
-  function reset(): void {
-    nextPlayTime = 0;
+  function sample() {
+    const stamp = ctx.getOutputTimestamp?.();
+    const now = stamp && typeof stamp.contextTime === 'number' && stamp.contextTime>0 && typeof stamp.performanceTime === 'number' ? Math.min(ctx.currentTime, stamp.contextTime+Math.max(0,performance.now()-stamp.performanceTime)/1000) : ctx.currentTime;
+    const dt=Math.min(.1,Math.max(0,now-previousTime));previousTime=now;
+    while(frames.length&&frames[0].end<=now)frames.shift();
+    const playing=frames.length>0&&frames[0].start<=now&&ctx.state!=='suspended';
+    const rms=playing?frames[0].rms:0;
+    const target=rms>.007?.9*(1-Math.exp(-(rms-.004)/.09)):0;
+    opening+=(target-opening)*(1-Math.exp(-dt/(target>opening?.012:.025)));
+    if(!playing||opening<.008)opening=0;
+    return {opening,playing};
   }
-
-  return { playPcm, reset };
+  function reset(){
+    for(const source of sources){source.onended=null;try{source.stop();}catch{/* already ended */}source.disconnect();}
+    sources.clear();frames.length=0;nextPlayTime=0;opening=0;previousTime=ctx.currentTime;
+  }
+  return {playPcm,reset,sample};
 }

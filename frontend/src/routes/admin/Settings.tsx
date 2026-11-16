@@ -106,7 +106,7 @@ export default function Settings() {
         <Card className="p-6">
           <h2 className="text-base font-semibold text-text mb-2">账号</h2>
           <div className="flex items-center justify-between">
-            <span className="text-text text-sm">HR · 菜鸟庆</span>
+            <span className="text-text text-sm">HR · 坤耀</span>
             <span className="text-muted text-xs">HR 登录鉴权即将上线</span>
           </div>
         </Card>

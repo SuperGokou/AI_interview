@@ -5,9 +5,12 @@
 """
 
 import asyncio
+import anyio
 import base64
 import logging
 from datetime import datetime
+
+from starlette.concurrency import run_in_threadpool
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
@@ -181,6 +184,13 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
         sess.ended_at = datetime.utcnow()
         db.commit()
         try:
-            build_report(db, sess.id, report_generator_factory())
+            # Use a separate SQLAlchemy session in the worker. A slow scoring
+            # provider must not block the event loop or another live interview.
+            bind, session_id = db.get_bind(), sess.id
+            def generate_report():
+                with Session(bind=bind) as report_db:
+                    build_report(report_db, session_id, report_generator_factory())
+            with anyio.CancelScope(shield=True):
+                await run_in_threadpool(generate_report)
         except Exception:
             logger.exception("auto report generation failed")

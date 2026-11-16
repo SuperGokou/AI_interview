@@ -16,15 +16,15 @@ const INTEGRITY_LABEL: Record<IntegrityLevel, string> = {
 };
 
 function statusColor(status: string): string {
-  if (status === 'completed') return '#2BE5A4';
-  if (status === 'in_progress') return '#2DD4EF';
+  if (status === 'completed' || status === 'done') return '#2BE5A4';
+  if (status === 'in_progress' || status === 'active') return '#2DD4EF';
   if (status === 'pending') return '#FACC15';
   return '#8593AD';
 }
 
 function statusLabel(status: string): string {
-  if (status === 'completed') return '已完成';
-  if (status === 'in_progress') return '进行中';
+  if (status === 'completed' || status === 'done') return '已完成';
+  if (status === 'in_progress' || status === 'active') return '进行中';
   if (status === 'pending') return '待面试';
   return status;
 }
@@ -41,6 +41,7 @@ export default function Candidates() {
   const [candidateName, setCandidateName] = useState('');
   const [generating, setGenerating] = useState(false);
   const [generatedLink, setGeneratedLink] = useState<string | null>(null);
+  const [generatedSupervisorLinks, setGeneratedSupervisorLinks] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
   const jobSelectId = useId();
 
@@ -62,7 +63,12 @@ export default function Candidates() {
     try {
       const res = await api.createSession(Number(selectedJobId), candidateName.trim());
       const link = `${window.location.origin}/interview?token=${res.token}`;
+      const supervisorRes = await api.createSupervisorLinks(res.token, 2);
+      const supervisorLinks = supervisorRes.links.map(
+        (item) => `${window.location.origin}/supervise?token=${item.token}`
+      );
       setGeneratedLink(link);
+      setGeneratedSupervisorLinks(supervisorLinks);
       loadData();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '生成失败');
@@ -75,6 +81,17 @@ export default function Candidates() {
     if (!generatedLink) return;
     try {
       await navigator.clipboard.writeText(generatedLink);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // clipboard not available in some envs
+    }
+  }
+
+  async function handleCopySupervisorLinks() {
+    if (generatedSupervisorLinks.length === 0) return;
+    try {
+      await navigator.clipboard.writeText(generatedSupervisorLinks.join('\n'));
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -101,7 +118,7 @@ export default function Candidates() {
           <h1 className="text-xl font-semibold text-text">候选人</h1>
           <p className="text-sm text-muted mt-1">管理候选人及面试邀请链接</p>
         </div>
-        <Button onClick={() => { setShowLinkForm((v) => !v); setGeneratedLink(null); }}>
+        <Button onClick={() => { setShowLinkForm((v) => !v); setGeneratedLink(null); setGeneratedSupervisorLinks([]); }}>
           + 生成面试链接
         </Button>
       </div>
@@ -138,7 +155,7 @@ export default function Candidates() {
             >
               {generating ? '生成中…' : '生成链接'}
             </Button>
-            <Button variant="ghost" onClick={() => { setShowLinkForm(false); setGeneratedLink(null); }}>
+            <Button variant="ghost" onClick={() => { setShowLinkForm(false); setGeneratedLink(null); setGeneratedSupervisorLinks([]); }}>
               取消
             </Button>
           </div>
@@ -150,6 +167,25 @@ export default function Candidates() {
                 <span className="text-sm text-cyan break-all flex-1">{generatedLink}</span>
                 <Button variant="ghost" onClick={() => void handleCopy()}>
                   {copied ? '已复制 ✓' : '复制链接'}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {generatedSupervisorLinks.length > 0 && (
+            <div className="mt-3 p-4 rounded-xl" style={{ background: '#0E1525', border: '1px solid #243049' }}>
+              <p className="text-xs text-muted mb-2">监督链接（发送给部门监督人员）：</p>
+              <div className="space-y-2">
+                {generatedSupervisorLinks.map((link, index) => (
+                  <div key={link} className="flex items-center gap-3">
+                    <span className="w-16 shrink-0 text-xs text-muted">监督员 {index + 1}</span>
+                    <span className="min-w-0 flex-1 break-all text-sm text-cyan">{link}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3">
+                <Button variant="ghost" onClick={() => void handleCopySupervisorLinks()}>
+                  {copied ? '已复制 ✓' : '复制监督链接'}
                 </Button>
               </div>
             </div>

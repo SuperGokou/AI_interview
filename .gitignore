@@ -7,3 +7,20 @@ dist/
 .pytest_cache/
 *.db
 docs/superpowers/
+
+# Server-only deployment secrets
+deploy/.env
+
+.DS_Store
+.env.*
+!.env.example
+*.db-*
+*.sqlite*
+*.pem
+*.key
+*.p12
+*.log
+coverage/
+private/
+backups/
+.claude/

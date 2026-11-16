@@ -1,4 +1,4 @@
-# 菜鸟庆面试系统 — 本地一键起(前端 + 后端一体,与 Render 用同一个 Dockerfile/镜像)
+# 坤耀面试系统 — 本地一键起(前端 + 后端一体,与 Render 用同一个 Dockerfile/镜像)
 # 用法:
 #   docker compose up --build       # 构建并启动
 #   打开 http://localhost:8000       # 前端 + 后端(/api、/ws/interview)都在这一个容器里
@@ -6,10 +6,18 @@
 services:
   app:
     build: .
-    image: cainiaoqing-interview
-    container_name: cainiaoqing-interview
+    image: kunyao-interview
+    container_name: kunyao-interview
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     env_file:
       - .env
     restart: unless-stopped
+    environment:
+      DEV_ENDPOINTS: "false"
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD}
+      DATABASE_URL: sqlite:////data/interviewai.db
+    volumes:
+      - interview_data:/data
+volumes:
+  interview_data:

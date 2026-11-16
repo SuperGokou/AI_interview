@@ -27,8 +27,9 @@ export default function AdminShell({ active, children }: AdminShellProps) {
       <aside className="hidden md:flex md:flex-col md:fixed md:inset-y-0 md:left-0 md:w-56 lg:w-64 bg-surface border-r border-border z-20">
         {/* Brand */}
         <div className="px-5 py-6 border-b border-border">
+          <img src="/kunyao-logo.svg" alt="坤耀 Logo" className="h-12 w-auto mb-3" />
           <span className="text-base font-semibold text-text leading-tight block">
-            菜鸟庆面试
+            坤耀
           </span>
           <span className="text-xs text-muted mt-0.5 block">HR 管理平台</span>
         </div>
@@ -50,7 +51,7 @@ export default function AdminShell({ active, children }: AdminShellProps) {
               HR
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-medium text-text truncate">HR · 菜鸟庆</p>
+              <p className="text-xs font-medium text-text truncate">HR · 坤耀</p>
               <p className="text-[11px] text-muted truncate">管理员</p>
             </div>
           </div>
@@ -60,7 +61,10 @@ export default function AdminShell({ active, children }: AdminShellProps) {
       {/* ── Mobile top bar (visible on small screens) ── */}
       <header className="md:hidden fixed top-0 inset-x-0 z-20 bg-surface border-b border-border">
         <div className="px-4 py-3 flex items-center justify-between">
-          <span className="text-sm font-semibold text-text">菜鸟庆面试</span>
+          <span className="flex items-center gap-2 text-sm font-semibold text-text">
+            <img src="/kunyao-logo.svg" alt="坤耀 Logo" className="h-7 w-auto" />
+            坤耀
+          </span>
           <span className="text-xs text-muted">HR 管理平台</span>
         </div>
         {/* Horizontal scrollable nav */}

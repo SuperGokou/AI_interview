@@ -99,7 +99,7 @@ export default function Dashboard() {
     <AdminShell active="仪表盘">
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-text">仪表盘</h1>
-        <p className="text-sm text-muted mt-1">菜鸟庆面试 · 运营概览</p>
+        <p className="text-sm text-muted mt-1">坤耀 · 运营概览</p>
       </div>
 
       {loading && (

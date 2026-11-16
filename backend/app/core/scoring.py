@@ -11,6 +11,7 @@ from app.core.deepseek_client import DeepSeekClient
 _SYSTEM = (
     "你是资深面试评估官。基于【职位/JD】【题库(含考点/标答/难度)】【面试转写】【作弊检测摘要】,"
     "给候选人打分并写评估。难题占分更高。分数 0-100 整数。"
+    "当前评估仅有文字转写，没有可供评估的影像；score_demeanor 必须为 null，评语不得推断表情、目光、姿态。作弊信号仅供人工复核，不代表作弊事实。"
     "只输出 JSON,不要多余文字:"
     '{"score_professional":整数,"score_communication":整数,"score_job_match":整数,'
     '"score_demeanor":整数或null,"ai_risk_level":"low"或"medium"或"high",'
@@ -87,18 +88,32 @@ class ReportGenerator:
             f"【面试转写】\n{_fmt_transcripts(transcripts)}\n\n"
             f"【作弊检测摘要】{cheat_summary or '无'}"
         )
-        raw = self._client.complete(system=_SYSTEM, user=user, temperature=0.2)
-        return self._parse(raw)
+        for attempt in range(2):
+            raw = self._client.complete(system=_SYSTEM, user=user, temperature=0.2)
+            result = self._parse(raw)
+            if result != _SAFE_DEFAULT:
+                return result
+            user += "\n上次输出无法解析。请重新输出完整、有效的 JSON 对象，不要省略字段。"
+        raise ValueError("报告生成失败：模型未返回有效 JSON，请重试。")
 
     @staticmethod
     def _parse(raw: str) -> dict:
         try:
             data = json.loads(_extract_json(raw))
+            if not isinstance(data, dict) or not set(_SAFE_DEFAULT).issubset(data):
+                return dict(_SAFE_DEFAULT)
+            for field in ("score_professional", "score_communication", "score_job_match"):
+                if type(data[field]) is not int or not 0 <= data[field] <= 100:
+                    return dict(_SAFE_DEFAULT)
+            if data["ai_risk_level"] not in _VALID_RISK:
+                return dict(_SAFE_DEFAULT)
+            if any(not isinstance(data[k], str) or not data[k].strip() for k in ("feedback", "overall")):
+                return dict(_SAFE_DEFAULT)
             return {
                 "score_professional": _int_or_none(data.get("score_professional")),
                 "score_communication": _int_or_none(data.get("score_communication")),
                 "score_job_match": _int_or_none(data.get("score_job_match")),
-                "score_demeanor": _int_or_none(data.get("score_demeanor")),
+                "score_demeanor": None,
                 "ai_risk_level": (
                     data.get("ai_risk_level")
                     if data.get("ai_risk_level") in _VALID_RISK

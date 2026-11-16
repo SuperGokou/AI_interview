@@ -11,3 +11,11 @@ frontend/dist
 docs
 .claude
 .pytest_cache
+
+.env.*
+**/*.db
+**/*.db-*
+**/.pytest_cache
+
+**/.env
+**/.env.*
