@@ -143,6 +143,24 @@ async def _reject(ws: WebSocket, message: str) -> None:
     await ws.close()
 
 
+def _serialize_sends(ws) -> None:
+    """Let only one task write to the socket at a time.
+
+    Several tasks send to the page (interviewer audio, lip-sync frames, proctoring
+    results, interruptions). The websocket library's flow control cannot have two
+    writers waiting at once: when the connection backs up it raises, which used to
+    kill the audio pump and leave the interview silent.
+    """
+    lock = asyncio.Lock()
+    raw_send = ws.send
+
+    async def send(message) -> None:
+        async with lock:
+            await raw_send(message)
+
+    ws.send = send
+
+
 def _decode_frame(raw: str) -> tuple[str, bytes] | None:
     """Parse one upstream frame; None for anything malformed or oversized.
 
@@ -249,6 +267,7 @@ def _generate_report(bind, session_id: int) -> None:
 @router.websocket("/ws/interview")
 async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
     await ws.accept()
+    _serialize_sends(ws)
     token = ws.query_params.get("token", "")
     sess = _load_session(db, token) if token else None
     if sess is None:
@@ -484,6 +503,15 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
             raise
         except Exception:  # pragma: no cover - defensive
             logger.exception("interview downstream pump error")
+            # Without this pump the interviewer is mute. End the interview where the
+            # candidate can see it instead of leaving them talking to a silent page.
+            try:
+                await ws.send_json(
+                    {"type": "error", "message": "面试连接出现异常，请刷新页面后重新进入。"}
+                )
+                await ws.close()
+            except Exception:
+                pass
 
     async def proactive_opener():
         try:
