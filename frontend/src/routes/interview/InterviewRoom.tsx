@@ -673,7 +673,7 @@ export default function InterviewRoom() {
           <circle cx="8" cy="11.7" r="0.9" fill="currentColor" />
         </svg>
         <span className="text-[12px] font-semibold leading-snug md:text-[13px]">
-          严禁使用 AI 作弊 · 平台已启用 AI 诚信评测机制，全程检测，异常将被记录
+          严禁使用 AI 作弊 · 平台已启用 AI 诚信评测机制，全程检测画面与声音，异常将被记录并留存截图
         </span>
       </div>
 

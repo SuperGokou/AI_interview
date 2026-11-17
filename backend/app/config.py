@@ -52,6 +52,7 @@ class Settings:
     violation_limit: int
     barge_in_hold_ms: int
     proctor_raw_mic: bool
+    proctor_save_snapshots: bool
     # 文本向量(AI 答案相似度);OpenAI 兼容接口
     embedding_api_key: str
     embedding_base_url: str
@@ -121,6 +122,9 @@ def get_settings() -> Settings:
         barge_in_hold_ms=_bounded_int("BARGE_IN_HOLD_MS", 700, 0, 5000),
         # 监考是否另开一路不降噪的麦克风(能听清键盘声)。关掉后改用面试官那一路。
         proctor_raw_mic=os.getenv("PROCTOR_RAW_MIC", "1").strip().lower() not in ("0", "false", "no", "off"),
+        # 监考发现问题时,把当时那一帧画面存下来作为证据(报告页可见)。
+        proctor_save_snapshots=os.getenv("PROCTOR_SAVE_SNAPSHOTS", "1").strip().lower()
+        not in ("0", "false", "no", "off"),
         # 默认复用百炼的 key;也可指向自建的开源向量模型服务(如 bge-m3)。
         embedding_api_key=os.getenv("EMBEDDING_API_KEY") or dashscope_key,
         embedding_base_url=os.getenv(

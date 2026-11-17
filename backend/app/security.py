@@ -21,7 +21,7 @@ _PUBLIC_ROUTES: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("GET", re.compile(r"/api/health")),
     ("GET", re.compile(r"/api/sessions/[^/]+")),
     ("POST", re.compile(r"/api/sessions/[^/]+/consent")),
-    ("GET", re.compile(r"/api/supervisors/[^/]+(?:/transcripts)?")),
+    ("GET", re.compile(r"/api/supervisors/[^/]+(?:/transcripts|/frame)?")),
 )
 
 # Wrong-password throttle (per client address, in-process).

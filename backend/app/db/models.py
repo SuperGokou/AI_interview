@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -109,6 +109,17 @@ class CheatEvent(Base):
     severity: Mapped[str] = mapped_column(String(8))  # low / medium / high
     evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+
+class EventSnapshot(Base):
+    """The camera frame a proctoring finding was based on (kept apart from the
+    event row so listing events never loads image data)."""
+
+    __tablename__ = "event_snapshots"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("cheat_events.id"), unique=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("interview_sessions.id"), index=True)
+    jpeg: Mapped[bytes] = mapped_column(LargeBinary)
 
 
 class Report(Base):

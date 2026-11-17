@@ -1,9 +1,12 @@
 """Supervisor links and session-scoped transcript access for the new frontend."""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.sessions import _get_session_or_404, list_transcripts
+from app.core.cheat_store import list_cheat_events
+from app.core.integrity import compute_integrity_level
+from app.core.live_frames import live_frames
 from app.core.tokens import generate_link_token
 from app.db import models
 from app.db.base import get_db
@@ -72,5 +75,20 @@ def get_supervisor(token: str, db: Session = Depends(get_db)):
 @router.get('/supervisors/{token}/transcripts')
 def supervisor_transcripts(token: str, db: Session = Depends(get_db)):
     _, sess = _resolve(db, token)
+    events = list_cheat_events(db, sess.id)
     return {"status": sess.status, "live": sess.status in ('active', 'done', 'in_progress', 'completed'),
-            "transcripts": list_transcripts(sess.link_token, db)}
+            "transcripts": list_transcripts(sess.link_token, db),
+            # What proctoring has noticed so far, so the supervisor sees it as it happens.
+            "integrity_level": compute_integrity_level(events),
+            "events": [{"kind": e.kind, "severity": e.severity, "evidence": e.evidence,
+                        "ts": e.ts.isoformat() if e.ts else None} for e in events]}
+
+
+@router.get('/supervisors/{token}/frame')
+def supervisor_frame(token: str, db: Session = Depends(get_db)):
+    """The candidate's newest camera frame, for the live view. 204 when there is none."""
+    _, sess = _resolve(db, token)
+    jpeg = live_frames.get(sess.id) if sess.status == 'active' else None
+    if jpeg is None:
+        return Response(status_code=204)
+    return Response(content=jpeg, media_type="image/jpeg")

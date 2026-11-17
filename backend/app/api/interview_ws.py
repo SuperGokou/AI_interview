@@ -19,7 +19,7 @@ from starlette.concurrency import run_in_threadpool
 from app.config import get_settings
 from app.core.answer_timing import TurnTimer
 from app.core.cheat_detection import AiTextDetector
-from app.core.cheat_store import integrity_level, record_cheat_event
+from app.core.cheat_store import integrity_level, record_cheat_event, save_snapshot
 from app.core.deepseek_client import DeepSeekClient
 from app.core.embeddings import EmbeddingNotConfigured, OpenAICompatibleEmbedder
 from app.core.integrity import interpret_visual_observation
@@ -40,6 +40,7 @@ from app.core.violations import (
     warning_text,
 )
 from app.core.interview_trace import InterviewTrace
+from app.core.live_frames import live_frames
 from app.core.interview_bridge import InterviewBridge
 from app.core.report_store import build_report
 from app.core.scoring import ReportGenerator
@@ -235,10 +236,12 @@ def _proctor_frame(
         return None
     with Session(bind=bind) as worker_db:
         for signal in signals:
-            record_cheat_event(
+            event = record_cheat_event(
                 worker_db, session_id, kind=signal.kind, severity=signal.severity,
                 evidence=signal.evidence,
             )
+            if get_settings().proctor_save_snapshots:
+                save_snapshot(worker_db, event, jpeg)
         return integrity_level(worker_db, session_id), [signal.kind for signal in signals]
 
 
@@ -666,6 +669,7 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                     room_audio["raw"].append(payload)
                 else:
                     camera["frame"] = payload
+                    live_frames.put(session_id, payload)
                     await bridge.send_image(payload)
                     if opener_task is None:
                         opener_task = asyncio.create_task(proactive_opener())
@@ -683,6 +687,7 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
     finally:
         with anyio.CancelScope(shield=True):
             state_closed["value"] = True
+            live_frames.drop(session_id)
             if mouth is not None:
                 await mouth.close()  # ends the relay task's frame iterator
             if background:

@@ -75,6 +75,10 @@ export interface CreateSessionResponse {
 }
 
 export interface CheatEvent {
+  /** Present on admin reads; needed to fetch the snapshot. */
+  id?: number;
+  /** True when the camera frame the finding was based on was kept. */
+  snapshot?: boolean;
   kind: string;
   severity: RiskLevel;
   evidence: string | null;
@@ -138,4 +142,7 @@ export interface SupervisorTranscriptFeed {
   status: string;
   live: boolean;
   transcripts: Transcript[];
+  /** What proctoring has noticed so far. Absent on older servers. */
+  integrity_level?: IntegrityLevel;
+  events?: CheatEvent[];
 }

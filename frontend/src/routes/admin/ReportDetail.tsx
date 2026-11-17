@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { AdminShell, Card, Button, Pill } from '../../ui';
 import { api, ApiError } from '../../lib/api';
+import { SEVERITY_LABEL, clockTime, eventLabel } from '../../lib/eventLabels';
 import type { ReportOut, CheatResponse, RiskLevel, IntegrityLevel, Transcript } from '../../types';
 
 const INTEGRITY_COLOR: Record<IntegrityLevel, string> = {
@@ -32,24 +33,6 @@ const SEVERITY_COLOR: Record<RiskLevel, string> = {
   low: '#8593AD',
   medium: '#FACC15',
   high: '#FB5070',
-};
-
-// Human-readable names for integrity event kinds; unknown kinds fall back to the raw value.
-const EVENT_LABEL: Record<string, string> = {
-  ai_text: '回答疑似照读 AI 稿',
-  latency_pattern: '回答前停顿模式异常',
-  probe_gap: '追问表现落差',
-  ai_similarity: '回答与 AI 答案高度相似',
-  gaze_off_screen: '视线长时间离开屏幕',
-  reading_motion: '疑似阅读动作',
-  multi_person: '画面中出现多人',
-  person_absent: '候选人离开画面',
-  phone: '画面中出现手机',
-  repeated_violation: '多次违规,面试被终止',
-  suspicious_object: '画面中有可疑物品',
-  keyboard_typing: '听到持续的键盘敲击声',
-  other_voice: '听到其他人说话',
-  background_noise: '环境嘈杂',
 };
 
 interface ScoreCardProps {
@@ -263,18 +246,34 @@ export default function ReportDetail() {
                     <div className="flex items-start gap-3 flex-wrap">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <span className="text-sm font-medium text-text">{EVENT_LABEL[ev.kind] ?? ev.kind}</span>
+                          <span className="text-sm font-medium text-text">{eventLabel(ev.kind)}</span>
                           <Pill color={SEVERITY_COLOR[ev.severity]} dot={false}>
-                            {ev.severity === 'low' ? '低' : ev.severity === 'medium' ? '中' : '高'}
+                            {SEVERITY_LABEL[ev.severity]}
                           </Pill>
                           {ev.ts && (
-                            <span className="text-xs text-muted">{ev.ts}</span>
+                            <span className="text-xs text-muted">{clockTime(ev.ts)}</span>
                           )}
                         </div>
                         {ev.evidence && (
                           <p className="text-xs text-muted leading-relaxed whitespace-pre-wrap">{ev.evidence}</p>
                         )}
                       </div>
+                      {ev.snapshot && typeof ev.id === 'number' && token && (
+                        <a
+                          href={api.cheatSnapshotUrl(token, ev.id)}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="查看当时的画面"
+                          className="block shrink-0 overflow-hidden rounded-md ring-1 ring-white/10 hover:ring-white/30"
+                        >
+                          <img
+                            src={api.cheatSnapshotUrl(token, ev.id)}
+                            alt={`${eventLabel(ev.kind)}时的画面`}
+                            loading="lazy"
+                            className="h-24 w-40 object-cover"
+                          />
+                        </a>
+                      )}
                     </div>
                   </div>
                 ))}

@@ -141,6 +141,17 @@ export const api = {
 
   listSupervisorTranscripts: (token: string) =>
     req<SupervisorTranscriptFeed>(`/api/supervisors/${t(token)}/transcripts`),
+
+  /** The candidate's newest camera frame, or null when there is none right now. */
+  supervisorFrame: async (token: string): Promise<Blob | null> => {
+    const res = await fetch(apiUrl(`/api/supervisors/${t(token)}/frame`), { cache: 'no-store' });
+    if (res.status !== 200) return null;
+    return res.blob();
+  },
+
+  /** Address of the camera frame a proctoring finding was based on (admin only). */
+  cheatSnapshotUrl: (token: string, eventId: number): string =>
+    apiUrl(`/api/sessions/${t(token)}/cheat/${eventId}/snapshot`),
 };
 
 export function interviewWsUrl(token: string): string {

@@ -3,11 +3,11 @@
 import logging
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.core.cheat_store import list_cheat_events
+from app.core.cheat_store import events_with_snapshot, get_snapshot, list_cheat_events
 from app.core.integrity import compute_integrity_level
 from app.core.report_store import build_report
 from app.core.scoring import ReportGenerator
@@ -120,14 +120,28 @@ def consent(token: str, db: Session = Depends(get_db)):
     return {"ok": True, "consented": True}
 
 
+@router.get("/{token}/cheat/{event_id}/snapshot")
+def get_cheat_snapshot(token: str, event_id: int, db: Session = Depends(get_db)):
+    """The camera frame a proctoring finding was based on. Admin only: the path is
+    not on the public list in app.security."""
+    sess = _get_session_or_404(token, db)
+    jpeg = get_snapshot(db, sess.id, event_id)
+    if jpeg is None:
+        raise HTTPException(status_code=404, detail="snapshot not found")
+    return Response(content=jpeg, media_type="image/jpeg")
+
+
 @router.get("/{token}/cheat")
 def get_cheat(token: str, db: Session = Depends(get_db)):
     sess = _get_session_or_404(token, db)
     events = list_cheat_events(db, sess.id)
+    pictured = events_with_snapshot(db, sess.id)
     return {
         "integrity_level": compute_integrity_level(events),
         "events": [
             {
+                "id": e.id,
+                "snapshot": e.id in pictured,
                 "kind": e.kind,
                 "severity": e.severity,
                 "evidence": e.evidence,
