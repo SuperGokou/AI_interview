@@ -16,6 +16,8 @@ const STATE_LABELS: Record<AvatarState, string> = {
   thinking: '\u6b63\u5728\u601d\u8003\u8ffd\u95ee',
 };
 
+const STILL_PORTRAIT = '/zoom-interviewer-listening.png';
+
 interface StateVideoInterviewerTileProps {
   command: AvatarStateCommand;
   mouthOpeningRef?: MutableRefObject<number>;
@@ -85,7 +87,18 @@ export default function StateVideoInterviewerTile({
       ].join(' ')}
       aria-label={'AI \u9762\u8bd5\u5b98\u52a8\u6001\u89c6\u9891\u753b\u9762'}
     >
-      <NeuralInterviewer mouthOpeningRef={mouthOpeningRef} />
+      {mouthConfig ? (
+        // The GPU renderer animates the whole head from this exact still portrait,
+        // so the overlay only lines up seamlessly on top of the same picture.
+        <img
+          src={STILL_PORTRAIT}
+          alt="坤曜 AI 面试官"
+          draggable={false}
+          className="absolute inset-0 h-full w-full object-cover object-top"
+        />
+      ) : (
+        <NeuralInterviewer mouthOpeningRef={mouthOpeningRef} />
+      )}
       {mouthFrameRef && <MouthOverlay config={mouthConfig} frameRef={mouthFrameRef} />}
 
       {generatedVideoUrl && (

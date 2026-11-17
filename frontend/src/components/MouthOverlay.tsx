@@ -22,7 +22,7 @@ function buildEdgeMask(width: number, height: number): HTMLCanvasElement | null 
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d');
-  if (!ctx) return null;
+  if (!ctx || typeof ctx.createImageData !== 'function') return null;
   const pixels = ctx.createImageData(width, height);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {

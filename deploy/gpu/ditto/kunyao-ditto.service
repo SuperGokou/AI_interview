@@ -1,0 +1,24 @@
+[Unit]
+Description=Kunyao private streaming talking-head renderer (Ditto)
+After=network-online.target
+Wants=network-online.target
+Conflicts=kunyao-mouth-stream.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/ditto/ditto-talkinghead
+# GPU_API_KEY (and optionally PORT, PORTRAIT) in a mode-600 env file.
+EnvironmentFile=/opt/kunyao-musetalk/service.env
+Environment=PORTRAIT=portrait.png
+Environment=PYTHONUNBUFFERED=1
+Environment=LD_LIBRARY_PATH=/usr/local/cuda/lib64
+ExecStart=/opt/ditto/venv/bin/python ditto_service.py
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=300
+TimeoutStopSec=30
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
