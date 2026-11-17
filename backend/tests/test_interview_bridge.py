@@ -105,3 +105,19 @@ async def test_bridge_send_audio_base64_encodes_pcm():
     await bridge.connect()
     await bridge.send_audio(b"\x10\x20\x30")
     assert captured["conv"].last_audio == base64.b64encode(b"\x10\x20\x30").decode()
+
+
+async def test_bridge_sets_how_long_a_pause_ends_the_candidates_turn():
+    made = []
+
+    def factory(**kwargs):
+        made.append(FakeConversation(**kwargs))
+        return made[-1]
+
+    await InterviewBridge(conversation_factory=factory, model="m", url="ws://x", voice="Tina",
+                          instructions="i", vad_silence_ms=1600).connect()
+    assert made[0].updated["turn_detection_silence_duration_ms"] == 1600
+
+    await InterviewBridge(conversation_factory=factory, model="m", url="ws://x", voice="Tina",
+                          instructions="i").connect()
+    assert "turn_detection_silence_duration_ms" not in made[1].updated

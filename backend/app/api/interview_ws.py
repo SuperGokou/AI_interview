@@ -25,6 +25,7 @@ from app.core.embeddings import EmbeddingNotConfigured, OpenAICompatibleEmbedder
 from app.core.integrity import interpret_visual_observation
 from app.core.integrity_analysis import analyze_integrity
 from app.core.mouth_stream import MouthStream
+from app.core.proctor import ProctorMonitor, VisionProctor
 from app.core.interview_bridge import InterviewBridge
 from app.core.report_store import build_report
 from app.core.scoring import ReportGenerator
@@ -57,6 +58,16 @@ def _default_embedder():
     except EmbeddingNotConfigured:
         return None
 
+
+def _default_proctor():
+    """Camera proctoring; None when switched off or no key is configured."""
+    settings = get_settings()
+    if not settings.proctor_interval_s or not settings.proctor_api_key:
+        return None
+    return VisionProctor()
+
+
+proctor_factory = _default_proctor
 
 # 模块级,便于测试注入;返回 None 表示跳过对应的面试后信号。
 review_client_factory = _default_review_client
@@ -140,6 +151,25 @@ def _detect_ai_text(bind, session_id: int, detector, text: str) -> str | None:
         return integrity_level(worker_db, session_id)
 
 
+def _proctor_frame(bind, session_id: int, proctor, monitor: ProctorMonitor, jpeg: bytes, now: float):
+    """Worker-thread job: look at one camera frame and persist confirmed findings.
+
+    Returns the new integrity level when something was recorded, else None.
+    """
+    observation = proctor.check(jpeg)
+    confirmed = monitor.update(observation["flags"], now)
+    signals = interpret_visual_observation({"flags": confirmed, "detail": observation["detail"]})
+    if not signals:
+        return None
+    with Session(bind=bind) as worker_db:
+        for signal in signals:
+            record_cheat_event(
+                worker_db, session_id, kind=signal.kind, severity=signal.severity,
+                evidence=signal.evidence,
+            )
+        return integrity_level(worker_db, session_id)
+
+
 def _generate_report(bind, session_id: int) -> None:
     """Worker-thread job: analyse integrity, then score, unless nothing was said."""
     with Session(bind=bind) as report_db:
@@ -206,6 +236,7 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
         voice=job.interviewer_voice,
         instructions=instructions,
         api_key=settings.dashscope_api_key,
+        vad_silence_ms=settings.vad_silence_ms,
     )
     try:
         await bridge.connect()
@@ -352,6 +383,30 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
         except Exception:  # pragma: no cover - defensive
             logger.exception("interview proactive opener failed")
 
+    proctor = proctor_factory()
+    camera = {"frame": None, "seen": None}
+
+    async def proctor_loop():
+        """Every few seconds, have the vision model look at the newest camera frame."""
+        monitor = ProctorMonitor()
+        while True:
+            await asyncio.sleep(settings.proctor_interval_s or 20)
+            frame = camera["frame"]
+            if frame is None or frame is camera["seen"]:
+                continue  # camera off or no new picture since the last look
+            camera["seen"] = frame
+            try:
+                level = await run_in_threadpool(
+                    _proctor_frame, bind, session_id, proctor, monitor, frame, clock()
+                )
+                if level is not None:
+                    await ws.send_json({"type": "integrity", "level": level})
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("camera proctoring check failed")
+
+    proctor_task = asyncio.create_task(proctor_loop()) if proctor is not None else None
     down_task = asyncio.create_task(pump_downstream())
     relay_task = asyncio.create_task(relay_mouth_frames()) if mouth is not None else None
     opener_task: asyncio.Task | None = None
@@ -365,6 +420,7 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                 if msg_type == "audio":
                     await bridge.send_audio(payload)
                 else:
+                    camera["frame"] = payload
                     await bridge.send_image(payload)
                     if opener_task is None:
                         opener_task = asyncio.create_task(proactive_opener())
@@ -386,7 +442,7 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
             if background:
                 # Let an in-flight check on the final answer finish and be recorded.
                 await asyncio.wait(background, timeout=_DETECTION_DRAIN_S)
-            for task in (down_task, opener_task, relay_task, *background):
+            for task in (down_task, opener_task, relay_task, proctor_task, *background):
                 if task is not None:
                     task.cancel()
                     try:

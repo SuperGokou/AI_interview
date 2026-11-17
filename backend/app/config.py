@@ -25,6 +25,8 @@ class Settings:
     input_sample_rate: int
     output_sample_rate: int
     vision_fps: float
+    # 候选人停顿多久才算说完(毫秒)。太短会在候选人思考时抢话。
+    vad_silence_ms: int
     # DeepSeek(OpenAI 兼容)
     deepseek_api_key: str
     deepseek_base_url: str
@@ -40,6 +42,11 @@ class Settings:
     mouth_stream_url: str
     mouth_stream_key: str
     mouth_playback_delay_ms: int
+    # 画面监考(视觉模型;OpenAI 兼容接口)
+    proctor_api_key: str
+    proctor_base_url: str
+    proctor_model: str
+    proctor_interval_s: int
     # 文本向量(AI 答案相似度);OpenAI 兼容接口
     embedding_api_key: str
     embedding_base_url: str
@@ -75,6 +82,7 @@ def get_settings() -> Settings:
         input_sample_rate=int(os.getenv("QWEN_INPUT_SR", "16000")),
         output_sample_rate=int(os.getenv("QWEN_OUTPUT_SR", "24000")),
         vision_fps=float(os.getenv("QWEN_VISION_FPS", "1.5")),
+        vad_silence_ms=_bounded_int("QWEN_VAD_SILENCE_MS", 1600, 300, 5000),
         deepseek_api_key=os.getenv("DEEPSEEK_API_KEY", ""),
         deepseek_base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
         deepseek_model=os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
@@ -87,6 +95,13 @@ def get_settings() -> Settings:
         mouth_stream_url=os.getenv("MOUTH_STREAM_URL", "").strip(),
         mouth_stream_key=os.getenv("MOUTH_STREAM_KEY", "").strip(),
         mouth_playback_delay_ms=_bounded_int("MOUTH_PLAYBACK_DELAY_MS", 450, 0, 2000),
+        proctor_api_key=os.getenv("PROCTOR_API_KEY") or dashscope_key,
+        proctor_base_url=os.getenv(
+            "PROCTOR_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        ),
+        proctor_model=os.getenv("PROCTOR_MODEL", "qwen-vl-max"),
+        # 0 关闭画面监考。
+        proctor_interval_s=_bounded_int("PROCTOR_INTERVAL_S", 20, 0, 600),
         # 默认复用百炼的 key;也可指向自建的开源向量模型服务(如 bge-m3)。
         embedding_api_key=os.getenv("EMBEDDING_API_KEY") or dashscope_key,
         embedding_base_url=os.getenv(

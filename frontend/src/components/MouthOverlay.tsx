@@ -10,7 +10,12 @@ export interface MouthFrame {
 interface MouthOverlayProps {
   config: MouthConfig | null;
   frameRef: MutableRefObject<MouthFrame | null>;
+  /** Called when rendered frames start or stop being shown. */
+  onActiveChange?: (active: boolean) => void;
 }
+
+/** Cross-fade between the idle picture underneath and the rendered head. */
+const FADE_MS = 220;
 
 /** Pixels over which the patch fades into the picture underneath. The base layer is
  *  a video and the patch is a JPEG of the portrait, so their tones can differ slightly;
@@ -41,8 +46,10 @@ function buildEdgeMask(width: number, height: number): HTMLCanvasElement | null 
  * picture beneath it, so patch coordinates from the server line up without any
  * layout maths. When there is no frame it is fully transparent.
  */
-export default function MouthOverlay({ config, frameRef }: MouthOverlayProps) {
+export default function MouthOverlay({ config, frameRef, onActiveChange }: MouthOverlayProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const onActiveChangeRef = useRef(onActiveChange);
+  onActiveChangeRef.current = onActiveChange;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -58,19 +65,25 @@ export default function MouthOverlay({ config, frameRef }: MouthOverlayProps) {
 
     let raf = 0;
     let painted = -1;
+    let active = false;
     const paint = () => {
       const frame = frameRef.current;
       const serial = frame?.serial ?? 0;
-      if (serial !== painted) {
+      if (frame && serial !== painted) {
         painted = serial;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        if (frame) {
-          scratchCtx.globalCompositeOperation = 'copy';
-          scratchCtx.drawImage(frame.image, 0, 0, width, height);
-          scratchCtx.globalCompositeOperation = 'destination-in';
-          scratchCtx.drawImage(mask, 0, 0);
-          ctx.drawImage(scratch, x, y);
-        }
+        scratchCtx.globalCompositeOperation = 'copy';
+        scratchCtx.drawImage(frame.image, 0, 0, width, height);
+        scratchCtx.globalCompositeOperation = 'destination-in';
+        scratchCtx.drawImage(mask, 0, 0);
+        ctx.drawImage(scratch, x, y);
+      }
+      // When frames stop, the last one stays drawn and fades out over the idle
+      // picture instead of vanishing in a single step.
+      if ((frame !== null) !== active) {
+        active = frame !== null;
+        canvas.style.opacity = active ? '1' : '0';
+        onActiveChangeRef.current?.(active);
       }
       raf = requestAnimationFrame(paint);
     };
@@ -89,6 +102,7 @@ export default function MouthOverlay({ config, frameRef }: MouthOverlayProps) {
       height={config.frame.height}
       aria-hidden="true"
       className="pointer-events-none absolute inset-0 h-full w-full object-cover object-top"
+      style={{ opacity: 0, transition: `opacity ${FADE_MS}ms ease-out` }}
     />
   );
 }

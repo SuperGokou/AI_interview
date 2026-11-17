@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import MouthOverlay, { type MouthFrame } from './MouthOverlay';
 import NeuralInterviewer from './NeuralInterviewer';
 import type {
@@ -17,6 +17,9 @@ const STATE_LABELS: Record<AvatarState, string> = {
 };
 
 const STILL_PORTRAIT = '/zoom-interviewer-listening.png';
+// A listening loop (blinks, slight sway) rendered from the same portrait. It starts
+// and ends on the portrait pose, which is also where every spoken reply ends.
+const IDLE_LOOP = '/interviewer-idle-v1.mp4';
 
 interface StateVideoInterviewerTileProps {
   command: AvatarStateCommand;
@@ -44,6 +47,20 @@ export default function StateVideoInterviewerTile({
     command.state === 'speaking' && command.videoUrl ? command.videoUrl : '';
   const [videoReady, setVideoReady] = useState(false);
   const speechVideoRef = useRef<HTMLVideoElement | null>(null);
+  const idleVideoRef = useRef<HTMLVideoElement | null>(null);
+
+  // A reply ends on the portrait pose, so restart the idle loop from its first
+  // frame (the same pose) as the rendered head fades out: no jump between them.
+  const handleRenderedHead = useCallback((active: boolean) => {
+    const idle = idleVideoRef.current;
+    if (active || !idle) return;
+    try {
+      idle.currentTime = 0;
+    } catch {
+      // Seeking can fail before metadata loads; the loop simply continues.
+    }
+    void idle.play?.()?.catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     setVideoReady(false);
@@ -90,16 +107,24 @@ export default function StateVideoInterviewerTile({
       {mouthConfig ? (
         // The GPU renderer animates the whole head from this exact still portrait,
         // so the overlay only lines up seamlessly on top of the same picture.
-        <img
-          src={STILL_PORTRAIT}
-          alt="坤曜 AI 面试官"
-          draggable={false}
+        <video
+          ref={idleVideoRef}
+          src={IDLE_LOOP}
+          poster={STILL_PORTRAIT}
+          muted
+          autoPlay
+          loop
+          playsInline
+          preload="auto"
+          aria-label="坤曜 AI 面试官"
           className="absolute inset-0 h-full w-full object-cover object-top"
         />
       ) : (
         <NeuralInterviewer mouthOpeningRef={mouthOpeningRef} />
       )}
-      {mouthFrameRef && <MouthOverlay config={mouthConfig} frameRef={mouthFrameRef} />}
+      {mouthFrameRef && (
+        <MouthOverlay config={mouthConfig} frameRef={mouthFrameRef} onActiveChange={handleRenderedHead} />
+      )}
 
       {generatedVideoUrl && (
         <video

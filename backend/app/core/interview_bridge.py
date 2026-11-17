@@ -68,6 +68,7 @@ class InterviewBridge:
         voice: str,
         instructions: str,
         api_key: str = "",
+        vad_silence_ms: int | None = None,
     ):
         self._factory = conversation_factory or _default_factory
         self._model = model
@@ -75,6 +76,7 @@ class InterviewBridge:
         self._voice = voice
         self._instructions = instructions
         self._api_key = api_key
+        self._vad_silence_ms = vad_silence_ms
         self._queue: asyncio.Queue = asyncio.Queue()
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._conv = None
@@ -139,10 +141,16 @@ class InterviewBridge:
 
     def _open_conversation(self) -> None:
         self._conv.connect()
+        options = {}
+        if self._vad_silence_ms:
+            # How long the candidate must be silent before the model takes its turn.
+            # The provider default (0.8 s) cuts in whenever someone pauses to think.
+            options["turn_detection_silence_duration_ms"] = self._vad_silence_ms
         self._conv.update_session(
             output_modalities=[MultiModality.AUDIO, MultiModality.TEXT],
             voice=self._voice,
             instructions=self._instructions,
+            **options,
         )
 
     async def trigger_response(self, instructions: str = "") -> None:

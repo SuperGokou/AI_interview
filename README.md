@@ -349,6 +349,7 @@ All endpoints not marked public require the admin credentials.
 | Scoring and AI-text detection | `deepseek-chat` (any OpenAI-compatible endpoint) | `DEEPSEEK_MODEL`, `DEEPSEEK_BASE_URL`, `DEEPSEEK_API_KEY` |
 | AI-answer similarity embeddings | `text-embedding-v3` via DashScope (any OpenAI-compatible endpoint, e.g. self-hosted bge-m3) | `EMBEDDING_MODEL`, `EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY` |
 | Realtime talking head | Ditto (Ant Group, Apache-2.0) on a GPU host (`deploy/gpu/ditto`) | `MOUTH_STREAM_URL`, `MOUTH_STREAM_KEY`, `MOUTH_PLAYBACK_DELAY_MS` |
+| Camera proctoring | `qwen-vl-max` via DashScope (any OpenAI-compatible vision endpoint) | `PROCTOR_MODEL`, `PROCTOR_BASE_URL`, `PROCTOR_API_KEY`, `PROCTOR_INTERVAL_S` |
 | Lobby person detection | EfficientDet Lite0 via MediaPipe (in browser) | bundled |
 
 ## Domain Logic
@@ -361,6 +362,8 @@ All endpoints not marked public require the admin credentials.
 | Time limit | Job duration plus 5 minutes grace, enforced by the server |
 | Integrity score | Event weights low = 1, medium = 3, high = 6; total >= 3 is yellow, >= 6 is red |
 | AI-text event | Recorded as high severity when the detector reports AI-like with confidence >= 0.6 |
+| Camera proctoring | One frame every 20 s; a finding (second person, nobody present, looking at another screen, phone/notes) is recorded only when two consecutive checks agree, then not again for 2 minutes |
+| Turn taking | The interviewer waits for 1.6 s of silence before replying (`QWEN_VAD_SILENCE_MS`) and is told not to cut in |
 | Answer latency | Estimated server-side: first audio chunk time + question audio length -> candidate speech onset; barge-in counts as 0 |
 | Latency pattern | Medium when >= 3 long answers have a median pause >= 4 s with spread <= 1.5 s |
 | Follow-up gap | Main-question average >= 75 and >= 30 points above the follow-up average; high with 2+ follow-ups, else medium |
@@ -434,7 +437,7 @@ EMBEDDING_MODEL=text-embedding-v3     # or a self-hosted bge-m3 behind an OpenAI
 - Single organization with one shared admin credential: no tenants, SSO, roles or admin audit log.
 - Without the optional GPU service the interviewer's mouth is audio-driven and only approximate. With it (Ditto), each reply starts about one second later, one NVIDIA L20 serves one interview at a time, the interviewer is a still photo between replies, and realtime lip-sync is less precise than offline rendering.
 - Realtime lip-sync has been verified up to frame delivery timing; how it looks in a browser during a live interview has not been checked yet.
-- The visual integrity pipeline is in place, but the realtime model does not yet emit structured visual observations, so integrity currently reflects the text, timing and follow-up signals.
+- Camera proctoring judges single frames with a general vision model: lighting, camera angle or a candidate looking down to think can trigger it, and it has not been validated on real interviews. Sound-based signals (keyboard typing, other voices) are not detected: the browser's noise suppression removes most of them before the audio reaches the server.
 - Integrity thresholds are reasoned defaults, not calibrated on labelled interviews; answer latency depends on the realtime provider emitting speech-onset events and has not been validated against a live model.
 - Correct answers to textbook questions naturally resemble AI answers, so the similarity signal is most meaningful on open-ended and experience questions.
 - Reports are model output and need human review; integrity signals are leads for review, not proof.

@@ -18,12 +18,15 @@ describe('StateVideoInterviewerTile', () => {
     expect(screen.getByTestId('audio-driven-mouth')).toBeInTheDocument();
   });
 
-  it('shows the still portrait under the rendered head when realtime rendering is on', () => {
+  it('plays the idle loop under the rendered head when realtime rendering is on', () => {
     const { container } = render(
       <StateVideoInterviewerTile command={command} mouthConfig={config} mouthFrameRef={{ current: null }} />
     );
     expect(screen.queryByTestId('audio-driven-mouth')).not.toBeInTheDocument();
-    expect(screen.getByAltText('坤曜 AI 面试官')).toHaveAttribute('src', '/zoom-interviewer-listening.png');
+    const idle = screen.getByLabelText('坤曜 AI 面试官');
+    expect(idle).toHaveAttribute('src', '/interviewer-idle-v1.mp4'); // alive between replies
+    expect(idle).toHaveAttribute('poster', '/zoom-interviewer-listening.png');
+    expect(idle).toHaveAttribute('loop');
     const canvas = container.querySelector('canvas');
     expect(canvas).toHaveAttribute('width', '1672');
     expect(canvas).toHaveAttribute('height', '940');

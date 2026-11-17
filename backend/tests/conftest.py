@@ -29,6 +29,7 @@ def _no_model_services_for_post_interview_analysis(monkeypatch):
         return None
 
     monkeypatch.setattr("app.api.interview_ws.mouth_stream_factory", no_mouth_stream)
+    monkeypatch.setattr("app.api.interview_ws.proctor_factory", lambda: None)
 
 
 @pytest.fixture
