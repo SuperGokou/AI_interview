@@ -164,6 +164,7 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
     if job is None:
         await _reject(ws, "面试对应的职位已不存在，请联系管理员。")
         return
+    settings = get_settings()
     candidate = db.get(models.Candidate, sess.candidate_id)
     questions = db.query(models.Question).filter_by(job_id=job.id).all()
     q_dicts = [
@@ -182,9 +183,10 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
         language=job.language,
         candidate_name=candidate.name if candidate else "",
         duration_minutes=job.duration_minutes,
+        interviewer_name=settings.interviewer_name,
+        interviewer_company=settings.interviewer_company,
     )
 
-    settings = get_settings()
     bridge = bridge_factory(
         model=settings.qwen_model,
         url=settings.qwen_ws_url,
@@ -205,7 +207,9 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
     sess.started_at = datetime.now(UTC)
     db.commit()
     session_id, bind = sess.id, db.get_bind()
-    opener_text = opener_for(job.language)
+    opener_text = opener_for(
+        job.language, name=settings.interviewer_name, company=settings.interviewer_company
+    )
     max_seconds = max(1, job.duration_minutes) * 60 + _OVERTIME_GRACE_S
 
     timer = TurnTimer(sample_rate=settings.output_sample_rate)

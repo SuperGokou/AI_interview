@@ -50,9 +50,9 @@ export default function LightweightInterviewer({ mouthOpeningRef }: { mouthOpeni
     frame=requestAnimationFrame(tick);
     return()=>{disposed=true;cancelAnimationFrame(frame);};
   }, [mouthOpeningRef]);
-  return <div ref={host} className="absolute inset-0 overflow-hidden" aria-label="坤耀轻量口型数字人">
+  return <div ref={host} className="absolute inset-0 overflow-hidden" aria-label="坤曜轻量口型数字人">
     <div style={{...size,position:'absolute',top:0,left:'50%',transform:'translateX(-50%)'}}>
-      <img src="/zoom-interviewer-listening.png" alt="坤耀 AI 面试官" className="absolute inset-0 h-full w-full" draggable={false}/>
+      <img src="/zoom-interviewer-listening.png" alt="坤曜 AI 面试官" className="absolute inset-0 h-full w-full" draggable={false}/>
       <canvas ref={mouth} width={168} height={112} aria-hidden="true" style={{position:'absolute',left:`${792/1672*100}%`,top:`${300/941*100}%`,width:`${168/1672*100}%`,height:`${112/941*100}%`}}/>
     </div>
   </div>;

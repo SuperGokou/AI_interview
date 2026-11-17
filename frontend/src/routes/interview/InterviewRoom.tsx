@@ -453,7 +453,7 @@ export default function InterviewRoom() {
               aria-hidden="true"
             />
             <div className="min-w-0">
-              <div className="truncate text-sm font-semibold">坤耀</div>
+              <div className="truncate text-sm font-semibold">坤曜</div>
               <div className="truncate text-[11px] text-white/55">{statusText}</div>
             </div>
           </div>
@@ -606,7 +606,7 @@ export default function InterviewRoom() {
         background: LANDING_BACKGROUND,
       }}
     >
-      <h1 className="sr-only">坤耀</h1>
+      <h1 className="sr-only">坤曜</h1>
 
       <div
         role="alert"
@@ -654,7 +654,7 @@ export default function InterviewRoom() {
           aria-hidden="true"
         />
         <span className="text-[20px] font-bold leading-none tracking-[0.04em] text-[#15172a]">
-          坤耀
+          坤曜
         </span>
       </div>
 

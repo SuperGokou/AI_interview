@@ -15,6 +15,22 @@ _MAX_KEY_POINTS_CHARS = 200
 _MAX_FOLLOW_UPS = 3
 _MAX_FOLLOW_UP_CHARS = 120
 
+DEFAULT_NAME = "KY-BOT"
+DEFAULT_COMPANY = "江苏坤曜智能科技有限公司"
+
+# 对外身份。这是产品层面的称呼:它决定模型怎么自我介绍,不改变底层由哪家服务提供推理。
+IDENTITY_ZH = (
+    "【身份】你是 {name},{company}旗下专注于面试的 AI 模型。"
+    "自我介绍时使用这个身份。候选人问你是谁、是什么模型、由谁开发时,就这样回答;"
+    "不要提及其他公司或其他模型的名称,不讨论底层技术细节,然后把话题带回面试。"
+)
+IDENTITY_EN = (
+    "Identity: you are {name}, an AI model from {company} that specialises in interviewing. "
+    "Introduce yourself this way. If asked who you are, what model you are or who built you, give "
+    "this answer; do not name other companies or models or discuss underlying technology, then "
+    "steer back to the interview."
+)
+
 BASE_PERSONA_ZH = (
     "你是一位资深的技术面试官,专业、友好而严谨,正在通过语音对候选人进行结构化面试。"
     "你能通过摄像头实时看到候选人本人以及周围环境——"
@@ -82,17 +98,21 @@ PLAYBOOK_EN = (
 )
 
 OPENER_ZH = (
-    "现在请你用中文主动开场:简短地自我介绍(你是本次面试的 AI 面试官),"
+    "现在请你用中文主动开场:简短地自我介绍(你是 {name},{company}旗下的面试模型,担任本次面试的 AI 面试官),"
     "说明面试流程与大致时长,然后自然地问出第一道题,正式开始面试。"
 )
 OPENER_EN = (
-    "Now proactively open in English: briefly introduce yourself as the AI interviewer for this session, "
+    "Now proactively open in English: briefly introduce yourself as {name}, the interview model from "
+    "{company} and the AI interviewer for this session, "
     "explain the process and approximate duration, then ask the first question to begin."
 )
 
 
-def opener_for(language: str = "zh") -> str:
-    return OPENER_EN if language == "en" else OPENER_ZH
+def opener_for(
+    language: str = "zh", *, name: str = DEFAULT_NAME, company: str = DEFAULT_COMPANY
+) -> str:
+    template = OPENER_EN if language == "en" else OPENER_ZH
+    return template.format(name=name, company=company)
 
 
 def _clip(text: str, limit: int) -> str:
@@ -130,6 +150,8 @@ def build_interviewer_instructions(
     language: str = "zh",
     candidate_name: str = "",
     duration_minutes: int = 30,
+    interviewer_name: str = DEFAULT_NAME,
+    interviewer_company: str = DEFAULT_COMPANY,
 ) -> str:
     """构建面试官 system instructions。
 
@@ -137,7 +159,14 @@ def build_interviewer_instructions(
     "follow_ups": 参考追问(每行一个)};后两项可选。标准答案不要传进来。
     """
     en = language == "en"
-    parts: List[str] = [BASE_PERSONA_EN if en else BASE_PERSONA_ZH, PLAYBOOK_EN if en else PLAYBOOK_ZH]
+    identity = (IDENTITY_EN if en else IDENTITY_ZH).format(
+        name=interviewer_name, company=interviewer_company
+    )
+    parts: List[str] = [
+        identity,
+        BASE_PERSONA_EN if en else BASE_PERSONA_ZH,
+        PLAYBOOK_EN if en else PLAYBOOK_ZH,
+    ]
     name = (candidate_name or "").strip()
     if en:
         parts.append(f"Position: {job_title}\nJob description: {jd}")

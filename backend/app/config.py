@@ -1,4 +1,4 @@
-"""坤耀面试系统 — 配置(单一职责:从环境变量装配 Settings)。"""
+"""坤曜面试系统 — 配置(单一职责:从环境变量装配 Settings)。"""
 
 import os
 from dataclasses import dataclass
@@ -33,6 +33,9 @@ class Settings:
     heygen_api_key: str
     heygen_avatar_id: str
     heygen_base_url: str
+    # 面试官对外身份(产品名与所属公司)
+    interviewer_name: str
+    interviewer_company: str
     # 文本向量(AI 答案相似度);OpenAI 兼容接口
     embedding_api_key: str
     embedding_base_url: str
@@ -65,6 +68,9 @@ def get_settings() -> Settings:
         heygen_api_key=os.getenv("HEYGEN_API_KEY", ""),
         heygen_avatar_id=os.getenv("HEYGEN_AVATAR_ID", "Anna_public_3_20240108"),
         heygen_base_url=os.getenv("HEYGEN_BASE_URL", "https://api.heygen.com"),
+        interviewer_name=os.getenv("INTERVIEWER_NAME", "").strip() or "KY-BOT",
+        interviewer_company=os.getenv("INTERVIEWER_COMPANY", "").strip()
+        or "江苏坤曜智能科技有限公司",
         # 默认复用百炼的 key;也可指向自建的开源向量模型服务(如 bge-m3)。
         embedding_api_key=os.getenv("EMBEDDING_API_KEY") or dashscope_key,
         embedding_base_url=os.getenv(

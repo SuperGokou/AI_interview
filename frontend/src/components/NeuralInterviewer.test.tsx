@@ -20,7 +20,7 @@ function ready(container:HTMLElement){
 }
 it('autoplays a silent shared-clock face clip without controls or independent eye patches',()=>{
  const {container}=render(<NeuralInterviewer mouthOpeningRef={{current:0}}/>);
- expect(screen.getByAltText('坤耀 AI 面试官')).toHaveAttribute('src','/zoom-interviewer-listening.png');
+ expect(screen.getByAltText('坤曜 AI 面试官')).toHaveAttribute('src','/zoom-interviewer-listening.png');
  const video=ready(container);
  expect(video.muted).toBe(true);expect(video.autoplay).toBe(true);expect(video.controls).toBe(false);
  expect(container.querySelectorAll('video')).toHaveLength(1);
@@ -39,7 +39,7 @@ it('falls back when the clip cannot load',()=>{
  const {container}=render(<NeuralInterviewer mouthOpeningRef={{current:0}}/>);
  fireEvent.error(container.querySelector('video')!);
  expect(container.querySelector('video[src*="continuous"]')).toBeNull();
- expect(screen.getByLabelText('坤耀轻量口型数字人')).toBeInTheDocument();
+ expect(screen.getByLabelText('坤曜轻量口型数字人')).toBeInTheDocument();
 });
 it('stops playback and cancels animation when removed',()=>{
  const {unmount}=render(<NeuralInterviewer />);unmount();

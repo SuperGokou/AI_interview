@@ -1,4 +1,4 @@
-# 坤耀面试系统 — 本地一键起(前端 + 后端一体,与生产部署用同一个 Dockerfile/镜像)
+# 坤曜面试系统 — 本地一键起(前端 + 后端一体,与生产部署用同一个 Dockerfile/镜像)
 # 用法:
 #   docker compose up --build       # 构建并启动
 #   打开 http://localhost:8000       # 前端 + 后端(/api、/ws/interview)都在这一个容器里

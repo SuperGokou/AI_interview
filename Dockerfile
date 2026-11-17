@@ -1,4 +1,4 @@
-# 坤耀面试系统 — multi-stage: build Vite frontend, run FastAPI backend (serves the frontend).
+# 坤曜面试系统 — multi-stage: build Vite frontend, run FastAPI backend (serves the frontend).
 FROM node:24-slim AS frontend
 WORKDIR /app/frontend
 COPY frontend/package*.json ./

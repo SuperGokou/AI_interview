@@ -353,6 +353,7 @@ All endpoints not marked public require the admin credentials.
 
 | Rule | Behaviour |
 |------|-----------|
+| Interviewer identity | Introduces itself as `INTERVIEWER_NAME` from `INTERVIEWER_COMPANY`; does not name other vendors or discuss underlying technology |
 | Session lifecycle | `pending` -> `active` on connect -> `done` on disconnect or time limit |
 | Invite links | Single use: a `done` session rejects new connections |
 | Time limit | Job duration plus 5 minutes grace, enforced by the server |
@@ -397,6 +398,8 @@ DEV_ENDPOINTS=false                   # true enables the unauthenticated demo se
 CORS_ORIGINS=                         # comma-separated; empty for same-origin deployments
 CONTENT_SECURITY_POLICY=              # unset = built-in policy; empty string disables it
 HEYGEN_API_KEY=                       # optional streaming avatar
+INTERVIEWER_NAME=KY-BOT               # how the interviewer introduces itself (branding only)
+INTERVIEWER_COMPANY=江苏坤曜智能科技有限公司
 
 # --- AI-answer similarity (optional) ----------------------------------------
 EMBEDDING_API_KEY=                    # default: DASHSCOPE_API_KEY

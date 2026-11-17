@@ -127,7 +127,7 @@ export default function StateVideoInterviewerTile({
           {status}
         </div>
         <div className="rounded bg-black/35 px-2.5 py-1 text-xs font-medium text-white/90 backdrop-blur">
-          {'坤耀 AI \u9762\u8bd5\u5b98'}
+          {'坤曜 AI \u9762\u8bd5\u5b98'}
         </div>
       </div>
     </section>

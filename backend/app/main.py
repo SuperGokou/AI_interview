@@ -1,4 +1,4 @@
-"""坤耀面试系统 — FastAPI 入口。"""
+"""坤曜面试系统 — FastAPI 入口。"""
 
 import os
 from contextlib import asynccontextmanager
@@ -28,7 +28,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="坤耀面试系统 API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="坤曜面试系统 API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -87,7 +87,7 @@ async def serve_spa(full_path: str):
     if index.is_file():
         # Always revalidate the shell so a new deploy is picked up immediately.
         return FileResponse(str(index), headers={"Cache-Control": _NO_CACHE})
-    return {"status": "ok", "service": "坤耀面试系统 API"}
+    return {"status": "ok", "service": "坤曜面试系统 API"}
 
 
 if __name__ == "__main__":

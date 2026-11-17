@@ -60,8 +60,8 @@ export default function NeuralInterviewer({ mouthOpeningRef }: { mouthOpeningRef
     };
   }, [mouthOpeningRef, failed]);
   if (failed) return <LightweightInterviewer mouthOpeningRef={mouthOpeningRef} />;
-  return <div className="absolute inset-0 overflow-hidden" aria-label="坤耀面试官">
-    <img src="/zoom-interviewer-listening.png" alt="坤耀 AI 面试官" className="absolute inset-0 h-full w-full object-cover object-top" draggable={false} />
+  return <div className="absolute inset-0 overflow-hidden" aria-label="坤曜面试官">
+    <img src="/zoom-interviewer-listening.png" alt="坤曜 AI 面试官" className="absolute inset-0 h-full w-full object-cover object-top" draggable={false} />
     <canvas ref={canvas} width={WIDTH} height={HEIGHT} aria-hidden="true" className="absolute inset-0 h-full w-full object-cover object-top" style={{ opacity: 0 }} />
     <video ref={video} src="/interviewer-continuous-v1.mp4" muted autoPlay playsInline loop preload="auto" aria-hidden="true" style={{position:'absolute',width:1,height:1,opacity:0,pointerEvents:'none'}} onError={() => setFailed(true)} />
   </div>;

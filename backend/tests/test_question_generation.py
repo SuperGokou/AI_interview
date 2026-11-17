@@ -7,7 +7,7 @@ from sqlalchemy import create_engine, inspect, text
 
 from app.core.question_generator import generate_questions
 from app.db import models
-from app.prompts.interviewer import build_interviewer_instructions
+from app.prompts.interviewer import build_interviewer_instructions, opener_for
 
 JOB = {"title": "后端工程师", "jd": "负责订单系统,技术栈 Go + MySQL + Kafka",
        "interviewer_voice": "Tina", "language": "zh"}
@@ -73,6 +73,57 @@ def test_english_playbook_has_no_chinese():
     assert "Key points (confidential): B-tree" in out
     assert "Suggested follow-ups: How big?" in out
     assert "考点" not in out and "面试官" not in out
+
+
+def test_interviewer_identifies_as_the_configured_product():
+    out = build_interviewer_instructions(job_title="后端", jd="x", questions=[])
+    assert "你是 KY-BOT,江苏坤曜智能科技有限公司旗下专注于面试的 AI 模型" in out
+    assert "不要提及其他公司或其他模型的名称" in out
+    assert "KY-BOT" in opener_for("zh") and "江苏坤曜智能科技有限公司" in opener_for("zh")
+
+    custom = build_interviewer_instructions(
+        job_title="Backend", jd="x", questions=[], language="en",
+        interviewer_name="ACME-HR", interviewer_company="Acme Ltd",
+    )
+    assert "you are ACME-HR, an AI model from Acme Ltd" in custom
+    assert "KY-BOT" not in custom
+    assert "ACME-HR" in opener_for("en", name="ACME-HR", company="Acme Ltd")
+
+
+def test_websocket_uses_the_configured_identity(client, db_session, monkeypatch):
+    import asyncio
+    from dataclasses import replace
+
+    import app.api.interview_ws as ws_module
+
+    captured = {}
+
+    class _Bridge:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        async def connect(self): pass
+        async def events(self): await asyncio.Event().wait()
+        async def trigger_response(self, instructions=""): pass
+        async def send_audio(self, pcm): pass
+        async def send_image(self, jpeg): pass
+        async def close(self): pass
+
+    branded = replace(
+        ws_module.get_settings(), interviewer_name="ACME-HR", interviewer_company="某某科技"
+    )
+    monkeypatch.setattr(ws_module, "get_settings", lambda: branded)
+    job = models.Job(title="后端", jd="x", interviewer_voice="Tina")
+    cand = models.Candidate(name="张三")
+    db_session.add_all([job, cand])
+    db_session.commit()
+    db_session.add(models.InterviewSession(job_id=job.id, candidate_id=cand.id, link_token="tok-id"))
+    db_session.commit()
+    monkeypatch.setattr("app.api.interview_ws.bridge_factory", _Bridge)
+    monkeypatch.setattr("app.api.interview_ws.ai_detector_factory", lambda: object())
+    with client.websocket_connect("/ws/interview?token=tok-id"):
+        pass
+    assert "你是 ACME-HR,某某科技旗下专注于面试的 AI 模型" in captured["instructions"]
 
 
 # --- generator --------------------------------------------------------------

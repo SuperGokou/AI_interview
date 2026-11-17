@@ -106,7 +106,7 @@ export default function Settings() {
         <Card className="p-6">
           <h2 className="text-base font-semibold text-text mb-2">账号</h2>
           <div className="flex items-center justify-between">
-            <span className="text-text text-sm">管理员 · 坤耀</span>
+            <span className="text-text text-sm">管理员 · 坤曜</span>
             <span className="text-muted text-xs">共享管理员凭据(HTTP Basic),在服务器 .env 中配置</span>
           </div>
         </Card>

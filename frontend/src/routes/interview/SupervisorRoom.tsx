@@ -131,7 +131,7 @@ export default function SupervisorRoom() {
             aria-hidden="true"
           />
           <div className="min-w-0">
-            <div className="truncate text-sm font-semibold">坤耀监督端</div>
+            <div className="truncate text-sm font-semibold">坤曜监督端</div>
             <div className="truncate text-xs text-white/50">
               {info ? `${info.candidate_name} · ${info.job.title}` : '加载中'}
             </div>

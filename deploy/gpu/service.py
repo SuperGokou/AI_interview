@@ -67,7 +67,7 @@ def create_app(render, api_key, output_dir):
 if __name__=='__main__':
     import uvicorn
     from render_portrait import PortraitRenderer
-    renderer=PortraitRenderer('zoom-interviewer-listening.png')
+    renderer=PortraitRenderer('zoom-interviewer-listening.png',os.environ.get('MOUTH_MODE','lower_face'))
     renderer.render('kunyao-test.wav','results/warmup.mp4')
     Path('results/warmup.mp4').unlink(missing_ok=True)
     app=create_app(renderer.render,os.environ['GPU_API_KEY'],'results/api')

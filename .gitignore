@@ -24,3 +24,6 @@ coverage/
 private/
 backups/
 .claude/
+
+# Locally fetched render samples
+samples/

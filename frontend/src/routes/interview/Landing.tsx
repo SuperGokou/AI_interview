@@ -35,7 +35,7 @@ export default function Landing() {
           }}
         />
         <h1 style={{ color: '#E8EEF9', margin: 0, fontSize: '1.5rem', letterSpacing: '0.05em' }}>
-          坤耀 · 候选人入口
+          坤曜 · 候选人入口
         </h1>
       </div>
 
