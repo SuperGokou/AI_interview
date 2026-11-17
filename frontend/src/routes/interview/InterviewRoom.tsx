@@ -723,6 +723,21 @@ export default function InterviewRoom() {
         />
       </div>
 
+      {landingVideo === 'welcome' && !welcome.playing && !interviewEnded && (
+        <div className="absolute bottom-6 left-8 z-10 flex max-w-[60vw] items-center gap-3 rounded-full bg-white/90 py-1.5 pl-4 pr-1.5 text-xs text-slate-600 shadow backdrop-blur">
+          {/* The greeting normally starts when the camera sees someone. Say what it is
+              waiting for, and never leave the visitor without a way to start it. */}
+          {!welcome.error && <span role="status" className="truncate">{welcome.status}</span>}
+          <button
+            type="button"
+            onClick={welcome.playNow}
+            className="shrink-0 rounded-full bg-[#4b4fe0] px-3.5 py-1.5 font-semibold text-white transition hover:bg-[#3a3ecf] active:scale-95"
+          >
+            播放欢迎视频
+          </button>
+        </div>
+      )}
+
       {requiresInvite && !session.active && (
         <div className="absolute bottom-6 left-1/2 z-20 w-[90%] max-w-md -translate-x-1/2 rounded-2xl bg-white/95 p-5 text-center text-slate-800 shadow-lg">
           <p className="font-semibold">请使用专属面试链接</p>

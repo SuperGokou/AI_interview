@@ -1,17 +1,30 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { initialPresence, observePresence } from '../lib/welcomePresence';
 import { startPersonCamera } from '../lib/personCamera';
+
+// Keeps manual replays from colliding with the detection cycle counter in the play key.
+const MANUAL_KEY_STRIDE = 1000;
+
 export function useWelcomePresence(enabled: boolean) {
   const state = useRef(initialPresence());
   const stopRef = useRef<(() => void) | undefined>();
   const [playing, setPlaying] = useState(false);
   const [playKey, setPlayKey] = useState(0);
+  const [manualPlays, setManualPlays] = useState(0);
   const [played, setPlayed] = useState(false);
   const [status, setStatus] = useState('正在开启摄像头…');
   const [error, setError] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const stop = useCallback(() => { stopRef.current?.(); stopRef.current = undefined; }, []);
   const finished = useCallback(() => setPlaying(false), []);
+  /** Play the greeting on request, without waiting for the camera to see someone. */
+  const playNow = useCallback(() => {
+    // Mark it played so detection does not start it a second time moments later.
+    state.current = { ...state.current, played: true };
+    setPlayed(true);
+    setManualPlays(n => n + 1);
+    setPlaying(true);
+  }, []);
   useEffect(() => {
     if (!enabled) { stop(); return; }
     state.current = observePresence(state.current, null, performance.now());
@@ -25,5 +38,15 @@ export function useWelcomePresence(enabled: boolean) {
     }, (message, failed) => { setStatus(message); setError(failed); });
     return stop;
   }, [enabled, attempt, stop]);
-  return { playing, playKey, played, status, error, stop, finished, retry: () => setAttempt(n => n + 1) };
+  return {
+    playing,
+    playKey: playKey * MANUAL_KEY_STRIDE + manualPlays,
+    played,
+    status,
+    error,
+    stop,
+    finished,
+    playNow,
+    retry: () => setAttempt(n => n + 1),
+  };
 }
