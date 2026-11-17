@@ -1,5 +1,6 @@
 """面试会话 REST(单一职责:会话创建/查询/同意条款)。"""
 
+import logging
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -15,6 +16,7 @@ from app.core.tokens import generate_link_token
 from app.db import models
 from app.db.base import get_db
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/sessions")
 
 # 模块级,便于测试注入 fake generator(避免真实 DeepSeek 调用)。
@@ -179,8 +181,14 @@ def create_report(token: str, db: Session = Depends(get_db)):
     sess = _get_session_or_404(token, db)
     try:
         report = build_report(db, sess.id, report_generator_factory())
-    except ValueError as exc:
+    except ValueError as exc:  # the model answered, but not with a usable report
         raise HTTPException(status_code=502, detail="报告生成失败，请重试。") from exc
+    except Exception as exc:  # bad key, quota, network: the model could not be reached
+        db.rollback()
+        logger.exception("report generation failed")
+        raise HTTPException(
+            status_code=502, detail="评估模型调用失败，请检查评估模型的密钥和额度后重试。"
+        ) from exc
     return _report_to_out(report)
 
 

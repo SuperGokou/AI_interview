@@ -89,3 +89,24 @@ def test_bad_model_output_returns_retryable_error_without_report(client, db_sess
     response = client.post('/api/sessions/bad-report/report')
     assert response.status_code == 502
     assert db_session.query(models.Report).filter_by(session_id=sid).count() == 0
+
+
+def test_report_endpoint_reports_an_unreachable_model_as_502(client, db_session, monkeypatch):
+    """A rejected key or network failure must not surface as a bare 500."""
+    from app.db import models
+
+    class _Unreachable:
+        def generate(self, **_kwargs):
+            raise RuntimeError("401 Authentication Fails")
+
+    job = models.Job(title="后端", jd="x", interviewer_voice="Tina")
+    cand = models.Candidate(name="张三")
+    db_session.add_all([job, cand])
+    db_session.commit()
+    db_session.add(models.InterviewSession(job_id=job.id, candidate_id=cand.id, link_token="tok-502"))
+    db_session.commit()
+    monkeypatch.setattr("app.api.sessions.report_generator_factory", lambda: _Unreachable())
+    resp = client.post("/api/sessions/tok-502/report")
+    assert resp.status_code == 502
+    assert "评估模型调用失败" in resp.json()["detail"]
+    assert "401" not in resp.text  # provider error text stays in the server log

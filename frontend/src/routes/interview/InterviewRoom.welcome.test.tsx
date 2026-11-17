@@ -233,6 +233,29 @@ describe('InterviewRoom landing and avatar state videos', () => {
     sample(false,11250);sample(true,11500);sample(true,12000);
     expect(clip()).toHaveAttribute('autoplay');
   });
+  test('plays the welcome clip muted with a hint when sound is blocked, and restarts with sound on a tap', async () => {
+    // Refuse playback with sound until the visitor has interacted, like a browser does.
+    let interacted = false;
+    const play = vi.fn(function (this: HTMLMediaElement) {
+      return this.muted || interacted ? Promise.resolve() : Promise.reject(new DOMException('', 'NotAllowedError'));
+    });
+    Object.defineProperty(HTMLMediaElement.prototype, 'play', { configurable: true, value: play });
+    let now = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    render(<InterviewRoom />);
+    const clip = () => screen.getByLabelText('AI 面试官欢迎视频') as HTMLVideoElement;
+    await act(async () => { mocks.cameraSample!(true); now = 500; mocks.cameraSample!(true); });
+
+    expect(clip().muted).toBe(true); // moving silently, not frozen on the first frame
+    expect(screen.getByRole('status')).toHaveTextContent('点击页面任意位置开启声音');
+
+    interacted = true;
+    await act(async () => { fireEvent.pointerDown(document.body); });
+    expect(clip().muted).toBe(false);
+    expect(clip().currentTime).toBe(0); // the narration starts over, with sound
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
   test('ten seconds absent stops an unfinished opening; detection pauses during interview', () => {
     let now = 0;vi.spyOn(performance,'now').mockImplementation(()=>now);
     const sample=(p:boolean,t:number)=>{now=t;act(()=>mocks.cameraSample!(p));};

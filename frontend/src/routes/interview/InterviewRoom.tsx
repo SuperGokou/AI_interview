@@ -183,6 +183,7 @@ function LandingVideo({
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const audioBlockedRef = useRef(false);
+  const [soundBlocked, setSoundBlocked] = useState(false);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -205,8 +206,20 @@ function LandingVideo({
       try {
         await video.play();
         audioBlockedRef.current = false;
+        setSoundBlocked(false);
       } catch {
+        // Browsers refuse sound before the visitor has interacted with the page.
+        // Show the clip moving, silently, rather than a frozen first frame; the
+        // first click or tap restarts it from the beginning with sound.
         audioBlockedRef.current = true;
+        if (disposed) return;
+        setSoundBlocked(true);
+        video.muted = true;
+        try {
+          await video.play();
+        } catch {
+          // Even muted playback was refused; the click handler below still retries.
+        }
       }
     };
 
@@ -214,6 +227,7 @@ function LandingVideo({
       const target = event.target instanceof Element ? event.target : null;
       if (target?.closest('[data-start-interview="true"]')) return;
       if (playing && audioBlockedRef.current) {
+        resetToStart();
         void playWithSound();
       }
     };
@@ -227,6 +241,7 @@ function LandingVideo({
     };
 
     audioBlockedRef.current = false;
+    setSoundBlocked(false);
     resetToStart();
     if (playing) void playWithSound();
     else video.pause();
@@ -270,6 +285,14 @@ function LandingVideo({
         }}
       />
 
+      {playing && soundBlocked && (
+        <div
+          role="status"
+          className="absolute inset-x-0 bottom-3 mx-auto w-fit rounded-full bg-black/60 px-4 py-1.5 text-xs font-medium text-white backdrop-blur"
+        >
+          点击页面任意位置开启声音
+        </div>
+      )}
     </div>
   );
 }
