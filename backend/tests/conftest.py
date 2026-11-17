@@ -57,6 +57,7 @@ def client(_engine, _SessionLocal, monkeypatch):
     monkeypatch.setenv("DEV_ENDPOINTS", "true")
     # Prevent lifespan's init_db() from connecting to Supabase during tests
     monkeypatch.setattr("app.main.init_db", lambda: None)
+    monkeypatch.setattr("app.main.recover_sessions", lambda: None)
 
     def override_get_db():
         db = _SessionLocal()

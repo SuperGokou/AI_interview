@@ -59,6 +59,31 @@ def _fmt_transcripts(transcripts: List[dict]) -> str:
     )
 
 
+def _score(value) -> int | None:
+    """0-100 as an int; tolerates '82', 82.0 and 82.4, rejects anything else."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, str):
+        try:
+            value = float(value.strip())
+        except ValueError:
+            return None
+    if not isinstance(value, (int, float)) or value != value:  # NaN
+        return None
+    return round(value) if 0 <= value <= 100 else None
+
+
+def _text(value) -> str:
+    """Plain text from a string, or from the object/list the model sometimes returns."""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict):
+        return "\n".join(f"{k}：{_text(v)}" for k, v in value.items() if _text(v))
+    if isinstance(value, list):
+        return "\n".join(t for t in (_text(v) for v in value) if t)
+    return ""
+
+
 def _int_or_none(v):
     if v is None:
         return None
@@ -88,7 +113,7 @@ class ReportGenerator:
             f"【面试转写】\n{_fmt_transcripts(transcripts)}\n\n"
             f"【作弊检测摘要】{cheat_summary or '无'}"
         )
-        for attempt in range(2):
+        for attempt in range(3):
             raw = self._client.complete(system=_SYSTEM, user=user, temperature=0.2)
             result = self._parse(raw)
             if result != _SAFE_DEFAULT:
@@ -98,29 +123,35 @@ class ReportGenerator:
 
     @staticmethod
     def _parse(raw: str) -> dict:
+        """Accept what the model reliably gets right and repair what it often does not.
+
+        The three scores and the risk level are required. The two text fields are
+        not: the model regularly drops one of them or returns the per-dimension
+        feedback as an object, and losing a whole interview's report over that is
+        worse than a report with one empty paragraph.
+        """
         try:
             data = json.loads(_extract_json(raw))
-            if not isinstance(data, dict) or not set(_SAFE_DEFAULT).issubset(data):
-                return dict(_SAFE_DEFAULT)
-            for field in ("score_professional", "score_communication", "score_job_match"):
-                if type(data[field]) is not int or not 0 <= data[field] <= 100:
-                    return dict(_SAFE_DEFAULT)
-            if data["ai_risk_level"] not in _VALID_RISK:
-                return dict(_SAFE_DEFAULT)
-            if any(not isinstance(data[k], str) or not data[k].strip() for k in ("feedback", "overall")):
-                return dict(_SAFE_DEFAULT)
-            return {
-                "score_professional": _int_or_none(data.get("score_professional")),
-                "score_communication": _int_or_none(data.get("score_communication")),
-                "score_job_match": _int_or_none(data.get("score_job_match")),
-                "score_demeanor": None,
-                "ai_risk_level": (
-                    data.get("ai_risk_level")
-                    if data.get("ai_risk_level") in _VALID_RISK
-                    else None
-                ),
-                "feedback": str(data.get("feedback", "")),
-                "overall": str(data.get("overall", "")),
-            }
-        except Exception:
+        except ValueError:
             return dict(_SAFE_DEFAULT)
+        if not isinstance(data, dict):
+            return dict(_SAFE_DEFAULT)
+        scores = {
+            field: _score(data.get(field))
+            for field in ("score_professional", "score_communication", "score_job_match")
+        }
+        if any(value is None for value in scores.values()):
+            return dict(_SAFE_DEFAULT)
+        risk = data.get("ai_risk_level")
+        if risk not in _VALID_RISK:
+            return dict(_SAFE_DEFAULT)
+        feedback, overall = _text(data.get("feedback")), _text(data.get("overall"))
+        if not feedback and not overall:
+            return dict(_SAFE_DEFAULT)
+        return {
+            **scores,
+            "score_demeanor": None,
+            "ai_risk_level": risk,
+            "feedback": feedback,
+            "overall": overall,
+        }

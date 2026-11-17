@@ -32,6 +32,9 @@ const MAX_BUFFERED_BYTES = 512 * 1024;
 // Measured from when it was shown, not from when it was due: a frame that arrives
 // late is still better than cutting to a motionless portrait mid-sentence.
 const MOUTH_FRAME_HOLD_MS = 400;
+// Frames normally arrive ahead of their audio, so an empty queue means the reply
+// is over. Then let go quickly: lingering on a frozen last frame reads as a hang.
+const MOUTH_FRAME_RELEASE_MS = 90;
 // Frames queued further ahead than this are a sign of a stuck clock; drop them.
 const MAX_QUEUED_MOUTH_FRAMES = 400;
 
@@ -154,7 +157,8 @@ export function useInterviewSession(
       mouthFrameRef.current = { image: pick.due.image, serial: mouthSerialRef.current };
     }
     const shown = mouthShownRef.current;
-    if (shown && performance.now() - mouthShownAtRef.current > MOUTH_FRAME_HOLD_MS) {
+    const hold = mouthQueueRef.current.length > 0 ? MOUTH_FRAME_HOLD_MS : MOUTH_FRAME_RELEASE_MS;
+    if (shown && performance.now() - mouthShownAtRef.current > hold) {
       shown.image.close();
       mouthShownRef.current = null;
       mouthFrameRef.current = null;

@@ -41,10 +41,22 @@ class VisionClient(Protocol):
     def describe(self, *, system: str, jpeg: bytes) -> str: ...
 
 
+class ProctorUnavailable(RuntimeError):
+    """None of the configured vision models can be used; stop trying for this interview."""
+
+
+def _is_missing_model(exc: Exception) -> bool:
+    status = getattr(exc, "status_code", None)
+    return status == 404 or "model_not_found" in str(exc) or "Model not exist" in str(exc)
+
+
 class OpenAICompatibleVision:
     def __init__(self, *, client=None, model: str | None = None):
         settings = get_settings()
-        self._model = model or settings.proctor_model
+        # Several names may be given, best first: model catalogues differ between
+        # accounts and regions, and a name that works for one key 404s for another.
+        names = model or settings.proctor_model
+        self._models = [name.strip() for name in names.split(",") if name.strip()]
         if client is None:
             from openai import OpenAI  # 延迟导入,避免测试环境强依赖
 
@@ -58,16 +70,28 @@ class OpenAICompatibleVision:
 
     def describe(self, *, system: str, jpeg: bytes) -> str:
         image = "data:image/jpeg;base64," + base64.b64encode(jpeg).decode()
-        response = self._client.chat.completions.create(
-            model=self._model,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": [{"type": "image_url", "image_url": {"url": image}}]},
-            ],
-            temperature=0.0,
-            max_tokens=300,
-        )
-        return response.choices[0].message.content or ""
+        while self._models:
+            try:
+                response = self._client.chat.completions.create(
+                    model=self._models[0],
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": [
+                            {"type": "image_url", "image_url": {"url": image}},
+                            {"type": "text", "text": "请检查这一帧画面。"},
+                        ]},
+                    ],
+                    temperature=0.0,
+                    max_tokens=300,
+                )
+            except Exception as exc:
+                if not _is_missing_model(exc):
+                    raise
+                logger.warning("vision model %s is not available for this key", self._models[0])
+                self._models = self._models[1:]
+                continue
+            return response.choices[0].message.content or ""
+        raise ProctorUnavailable("no configured vision model is available (set PROCTOR_MODEL)")
 
 
 class VisionProctor:
@@ -92,8 +116,15 @@ class VisionProctor:
         }
 
 
+# Things that are either in the picture or not: one clear sighting is enough, and
+# they can be brief (a phone held up for a few seconds). Gaze and absence are
+# judgement calls on a single frame, so those need two checks in a row.
+IMMEDIATE_FLAGS = frozenset({"multi_person", "suspicious_object"})
+
+
 class ProctorMonitor:
-    """A flag is reported when two consecutive checks agree, then not again for a while."""
+    """Debounce: objects and extra people count at once, gaze and absence need two
+    consecutive checks; a reported flag is not repeated for a while."""
 
     def __init__(self, *, cooldown_s: float = 120.0):
         self._cooldown_s = cooldown_s
@@ -104,8 +135,9 @@ class ProctorMonitor:
         current = frozenset(flags)
         confirmed = [
             flag
-            for flag in sorted(current & self._previous)
-            if now - self._reported_at.get(flag, float("-inf")) >= self._cooldown_s
+            for flag in sorted(current)
+            if (flag in IMMEDIATE_FLAGS or flag in self._previous)
+            and now - self._reported_at.get(flag, float("-inf")) >= self._cooldown_s
         ]
         self._reported_at = {**self._reported_at, **{flag: now for flag in confirmed}}
         self._previous = current

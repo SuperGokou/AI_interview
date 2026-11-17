@@ -273,3 +273,16 @@ def test_interview_is_closed_at_the_time_limit(client, db_session, ws_fakes, mon
         assert frame["type"] == "error" and "时间已到" in frame["message"]
     db_session.expire_all()
     assert db_session.query(models.InterviewSession).one().status == "done"
+
+
+def test_sessions_left_active_by_a_previous_run_are_closed(db_session):
+    from app.core.session_recovery import close_orphaned_sessions
+
+    _seed_session(db_session, token="tok-orphan", status="active")
+    _seed_session(db_session, token="tok-waiting", status="pending")
+    assert close_orphaned_sessions(db_session) == 1
+    assert close_orphaned_sessions(db_session) == 0
+    db_session.expire_all()
+    by_token = {s.link_token: s for s in db_session.query(models.InterviewSession)}
+    assert by_token["tok-orphan"].status == "done" and by_token["tok-orphan"].ended_at is not None
+    assert by_token["tok-waiting"].status == "pending"

@@ -20,6 +20,7 @@ const STILL_PORTRAIT = '/zoom-interviewer-listening.png';
 // A listening loop (blinks, slight sway) rendered from the same portrait. It starts
 // and ends on the portrait pose, which is also where every spoken reply ends.
 const IDLE_LOOP = '/interviewer-idle-v1.mp4';
+const IDLE_PARK_DELAY_MS = 300;
 
 interface StateVideoInterviewerTileProps {
   command: AvatarStateCommand;
@@ -49,17 +50,26 @@ export default function StateVideoInterviewerTile({
   const speechVideoRef = useRef<HTMLVideoElement | null>(null);
   const idleVideoRef = useRef<HTMLVideoElement | null>(null);
 
-  // A reply ends on the portrait pose, so restart the idle loop from its first
-  // frame (the same pose) as the rendered head fades out: no jump between them.
+  // A reply ends on the portrait pose, which is also the idle loop's first frame.
+  // While the rendered head covers it, park the loop on that frame (the seek is
+  // hidden and has time to finish); when the head fades out, just press play.
+  // Seeking at the hand-over itself showed a stale frame for a moment.
   const handleRenderedHead = useCallback((active: boolean) => {
     const idle = idleVideoRef.current;
-    if (active || !idle) return;
-    try {
-      idle.currentTime = 0;
-    } catch {
-      // Seeking can fail before metadata loads; the loop simply continues.
+    if (!idle) return;
+    if (!active) {
+      void idle.play?.()?.catch(() => undefined);
+      return;
     }
-    void idle.play?.()?.catch(() => undefined);
+    window.setTimeout(() => {
+      // After the fade-in, so the loop is not seen stopping.
+      idle.pause?.();
+      try {
+        idle.currentTime = 0;
+      } catch {
+        // Seeking can fail before metadata loads; the loop simply continues.
+      }
+    }, IDLE_PARK_DELAY_MS);
   }, []);
 
   useEffect(() => {

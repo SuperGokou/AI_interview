@@ -18,13 +18,20 @@ from app.api.jobs import router as jobs_router
 from app.api.questions import router as questions_router
 from app.api.sessions import router as sessions_router
 from app.api.supervisors import router as supervisors_router
-from app.db.base import init_db
+from app.core.session_recovery import close_orphaned_sessions
+from app.db.base import SessionLocal, init_db
 from app.security import AdminBoundaryMiddleware
+
+
+def recover_sessions() -> None:
+    with SessionLocal() as db:
+        close_orphaned_sessions(db)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()  # Fail startup if database initialization fails.
+    recover_sessions()
     yield
 
 

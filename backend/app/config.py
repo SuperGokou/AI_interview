@@ -99,9 +99,10 @@ def get_settings() -> Settings:
         proctor_base_url=os.getenv(
             "PROCTOR_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"
         ),
-        proctor_model=os.getenv("PROCTOR_MODEL", "qwen-vl-max"),
+        # 可填多个,逗号分隔,按顺序尝试:不同账号/地域开通的模型不同。
+        proctor_model=os.getenv("PROCTOR_MODEL", "qwen3.8-flash,qwen3-vl-plus,qwen-vl-plus"),
         # 0 关闭画面监考。
-        proctor_interval_s=_bounded_int("PROCTOR_INTERVAL_S", 20, 0, 600),
+        proctor_interval_s=_bounded_int("PROCTOR_INTERVAL_S", 8, 0, 600),
         # 默认复用百炼的 key;也可指向自建的开源向量模型服务(如 bge-m3)。
         embedding_api_key=os.getenv("EMBEDDING_API_KEY") or dashscope_key,
         embedding_base_url=os.getenv(

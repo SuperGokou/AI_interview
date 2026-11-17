@@ -25,7 +25,7 @@ from app.core.embeddings import EmbeddingNotConfigured, OpenAICompatibleEmbedder
 from app.core.integrity import interpret_visual_observation
 from app.core.integrity_analysis import analyze_integrity
 from app.core.mouth_stream import MouthStream
-from app.core.proctor import ProctorMonitor, VisionProctor
+from app.core.proctor import ProctorMonitor, ProctorUnavailable, VisionProctor
 from app.core.interview_bridge import InterviewBridge
 from app.core.report_store import build_report
 from app.core.scoring import ReportGenerator
@@ -283,10 +283,14 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
         )
     turn = {"utterance": 0, "samples": 0}
 
+    state_closed = {"value": False}
+
     async def relay_mouth_frames():
         try:
             async for frame in mouth.frames():
                 await ws.send_bytes(frame)
+            if state_closed["value"]:
+                return  # the interview itself is over; nobody is left to tell
             # The renderer went away mid-interview (restart, crash, network). Tell
             # the page, or it would keep showing a motionless portrait while the
             # interviewer talks instead of falling back to the audio-driven mouth.
@@ -403,6 +407,9 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                     await ws.send_json({"type": "integrity", "level": level})
             except asyncio.CancelledError:
                 raise
+            except ProctorUnavailable as exc:
+                logger.error("camera proctoring switched off for this interview: %s", exc)
+                return
             except Exception:
                 logger.exception("camera proctoring check failed")
 
@@ -437,6 +444,7 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
         logger.exception("interview upstream loop error")
     finally:
         with anyio.CancelScope(shield=True):
+            state_closed["value"] = True
             if mouth is not None:
                 await mouth.close()  # ends the relay task's frame iterator
             if background:

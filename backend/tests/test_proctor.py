@@ -29,20 +29,50 @@ def test_proctor_tolerates_fenced_or_malformed_output():
         assert VisionProctor(_Vision(junk)).check(b"x")["flags"] == []
 
 
-def test_monitor_needs_two_consecutive_sightings_then_cools_down():
+def test_objects_and_extra_people_count_on_first_sight_then_cool_down():
     monitor = ProctorMonitor(cooldown_s=120)
-    assert monitor.update(["multi_person"], 0) == []  # one frame could be a mistake
-    assert monitor.update(["multi_person"], 20) == ["multi_person"]
-    assert monitor.update(["multi_person"], 40) == []  # same problem, no repeat yet
-    assert monitor.update(["multi_person", "suspicious_object"], 150) == ["multi_person"]
-    assert monitor.update(["suspicious_object"], 170) == ["suspicious_object"]
+    assert monitor.update(["suspicious_object"], 0) == ["suspicious_object"]  # a phone held up briefly
+    assert monitor.update(["suspicious_object", "multi_person"], 8) == ["multi_person"]
+    assert monitor.update(["suspicious_object"], 60) == []  # same problem, no repeat yet
+    assert monitor.update(["suspicious_object"], 130) == ["suspicious_object"]
 
 
-def test_monitor_forgets_a_flag_that_did_not_repeat():
+def test_gaze_and_absence_need_two_consecutive_checks():
     monitor = ProctorMonitor()
-    monitor.update(["gaze_off_screen"], 0)
-    assert monitor.update([], 20) == []
-    assert monitor.update(["gaze_off_screen"], 40) == []  # not consecutive
+    assert monitor.update(["gaze_off_screen"], 0) == []  # one frame could be a glance
+    assert monitor.update([], 8) == []
+    assert monitor.update(["gaze_off_screen"], 16) == []  # not consecutive
+    assert monitor.update(["gaze_off_screen", "person_absent"], 24) == ["gaze_off_screen"]
+    assert monitor.update(["person_absent"], 32) == ["person_absent"]
+
+
+def test_vision_client_falls_back_to_the_next_model_and_gives_up_cleanly():
+    import pytest
+
+    from app.core.proctor import OpenAICompatibleVision, ProctorUnavailable
+
+    class _Missing(Exception):
+        status_code = 404
+
+    calls = []
+
+    class _Completions:
+        def create(self, *, model, **_kwargs):
+            calls.append(model)
+            if model != "works":
+                raise _Missing("Model not exist.")
+            message = type("M", (), {"content": '{"flags": [], "detail": "ok"}'})()
+            return type("R", (), {"choices": [type("C", (), {"message": message})()]})()
+
+    client = type("Client", (), {"chat": type("Chat", (), {"completions": _Completions()})()})()
+    vision = OpenAICompatibleVision(client=client, model="gone-1, gone-2, works")
+    assert "ok" in vision.describe(system="s", jpeg=b"x")
+    assert "ok" in vision.describe(system="s", jpeg=b"x")
+    assert calls == ["gone-1", "gone-2", "works", "works"]  # dead names are not retried
+
+    none_left = OpenAICompatibleVision(client=client, model="gone-1")
+    with pytest.raises(ProctorUnavailable):
+        none_left.describe(system="s", jpeg=b"x")
 
 
 class _Bridge:
@@ -55,7 +85,7 @@ class _Bridge:
     async def close(self): pass
 
 
-def test_websocket_records_a_confirmed_camera_finding(client, db_session, monkeypatch):
+def test_websocket_records_a_camera_finding(client, db_session, monkeypatch):
     job = models.Job(title="后端", jd="x", interviewer_voice="Tina")
     cand = models.Candidate(name="张三")
     db_session.add_all([job, cand])
@@ -80,13 +110,10 @@ def test_websocket_records_a_confirmed_camera_finding(client, db_session, monkey
 
     with client.websocket_connect("/ws/interview?token=tok-proctor") as ws:
         ws.send_text(frame(b"frame-1"))
-        import time
-        time.sleep(0.15)
-        ws.send_text(frame(b"frame-2"))  # the second sighting confirms it
         assert ws.receive_json() == {"type": "integrity", "level": "red"}
 
     db_session.expire_all()
     events = db_session.query(models.CheatEvent).all()
     assert [(e.kind, e.severity) for e in events] == [("multi_person", "high")]
     assert "第二个人" in events[0].evidence
-    assert vision.frames[:2] == [b"frame-1", b"frame-2"]  # an unchanged frame is not re-checked
+    assert vision.frames == [b"frame-1"]  # an unchanged frame is not re-checked
