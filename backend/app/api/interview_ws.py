@@ -24,6 +24,7 @@ from app.core.deepseek_client import DeepSeekClient
 from app.core.embeddings import EmbeddingNotConfigured, OpenAICompatibleEmbedder
 from app.core.integrity import interpret_visual_observation
 from app.core.integrity_analysis import analyze_integrity
+from app.core.mouth_stream import MouthStream
 from app.core.interview_bridge import InterviewBridge
 from app.core.report_store import build_report
 from app.core.scoring import ReportGenerator
@@ -60,6 +61,18 @@ def _default_embedder():
 # 模块级,便于测试注入;返回 None 表示跳过对应的面试后信号。
 review_client_factory = _default_review_client
 embedder_factory = _default_embedder
+
+
+async def _default_mouth_stream():
+    """Realtime lip-sync session; None when not configured or unavailable."""
+    settings = get_settings()
+    return await MouthStream.connect(
+        settings.mouth_stream_url, settings.mouth_stream_key, settings.output_sample_rate
+    )
+
+
+# 模块级,便于测试注入 fake;返回 None 表示本场面试使用近似口型。
+mouth_stream_factory = _default_mouth_stream
 
 # 回答 AI 味置信度阈值,超过才记一次作弊事件。
 _AI_TEXT_THRESHOLD = 0.6
@@ -230,6 +243,24 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
     detector = ai_detector_factory()
     background: set[asyncio.Task] = set()
 
+    # Optional realtime lip-sync. Audio chunks are tagged with (utterance, sample
+    # position) so the browser can place each mouth frame on its playback clock.
+    mouth = await mouth_stream_factory()
+    if mouth is not None:
+        await ws.send_json(
+            {"type": "mouth_config", "delay_ms": settings.mouth_playback_delay_ms, **mouth.config}
+        )
+    turn = {"utterance": 0, "samples": 0}
+
+    async def relay_mouth_frames():
+        try:
+            async for frame in mouth.frames():
+                await ws.send_bytes(frame)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("relaying lip-sync frames failed")
+
     async def check_ai_text(text: str) -> None:
         """Runs beside the pump: a slow or failing detector must never delay or
         stop the interviewer's audio."""
@@ -254,10 +285,25 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                 event = await bridge.events()
                 kind = event.get("kind")
                 if kind == "audio":
-                    timer.on_interviewer_audio(len(event["data"]), clock())
+                    pcm = event["data"]
+                    timer.on_interviewer_audio(len(pcm), clock())
                     await ws.send_json(
-                        {"type": "audio", "data": base64.b64encode(event["data"]).decode()}
+                        {
+                            "type": "audio",
+                            "data": base64.b64encode(pcm).decode(),
+                            "u": turn["utterance"],
+                            "p": turn["samples"],
+                        }
                     )
+                    turn["samples"] += len(pcm) // 2
+                    if mouth is not None and mouth.alive:
+                        await mouth.send_audio(pcm)
+                elif kind == "response_done":
+                    if turn["samples"]:
+                        turn["utterance"] += 1
+                        turn["samples"] = 0
+                    if mouth is not None:
+                        await mouth.end_utterance()
                 elif kind == "transcript_delta":
                     await ws.send_json({"type": "transcript_delta", "text": event["text"]})
                 elif kind == "transcript":
@@ -303,6 +349,7 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
             logger.exception("interview proactive opener failed")
 
     down_task = asyncio.create_task(pump_downstream())
+    relay_task = asyncio.create_task(relay_mouth_frames()) if mouth is not None else None
     opener_task: asyncio.Task | None = None
     try:
         async with asyncio.timeout(max_seconds):
@@ -330,10 +377,12 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
         logger.exception("interview upstream loop error")
     finally:
         with anyio.CancelScope(shield=True):
+            if mouth is not None:
+                await mouth.close()  # ends the relay task's frame iterator
             if background:
                 # Let an in-flight check on the final answer finish and be recorded.
                 await asyncio.wait(background, timeout=_DETECTION_DRAIN_S)
-            for task in (down_task, opener_task, *background):
+            for task in (down_task, opener_task, relay_task, *background):
                 if task is not None:
                     task.cancel()
                     try:

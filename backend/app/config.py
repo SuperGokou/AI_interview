@@ -36,12 +36,25 @@ class Settings:
     # 面试官对外身份(产品名与所属公司)
     interviewer_name: str
     interviewer_company: str
+    # 实时口型服务(可选;未配置时使用按音量驱动的近似口型)
+    mouth_stream_url: str
+    mouth_stream_key: str
+    mouth_playback_delay_ms: int
     # 文本向量(AI 答案相似度);OpenAI 兼容接口
     embedding_api_key: str
     embedding_base_url: str
     embedding_model: str
     # 数据库
     database_url: str
+
+
+def _bounded_int(name: str, default: int, low: int, high: int) -> int:
+    """Integer setting clamped to a sane range; a malformed value falls back to the default."""
+    try:
+        value = int(os.getenv(name, "") or default)
+    except ValueError:
+        return default
+    return max(low, min(high, value))
 
 
 @lru_cache
@@ -71,6 +84,9 @@ def get_settings() -> Settings:
         interviewer_name=os.getenv("INTERVIEWER_NAME", "").strip() or "KY-BOT",
         interviewer_company=os.getenv("INTERVIEWER_COMPANY", "").strip()
         or "江苏坤曜智能科技有限公司",
+        mouth_stream_url=os.getenv("MOUTH_STREAM_URL", "").strip(),
+        mouth_stream_key=os.getenv("MOUTH_STREAM_KEY", "").strip(),
+        mouth_playback_delay_ms=_bounded_int("MOUTH_PLAYBACK_DELAY_MS", 450, 0, 2000),
         # 默认复用百炼的 key;也可指向自建的开源向量模型服务(如 bge-m3)。
         embedding_api_key=os.getenv("EMBEDDING_API_KEY") or dashscope_key,
         embedding_base_url=os.getenv(

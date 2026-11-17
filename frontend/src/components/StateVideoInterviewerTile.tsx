@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import MouthOverlay, { type MouthFrame } from './MouthOverlay';
 import NeuralInterviewer from './NeuralInterviewer';
 import type {
   AvatarState,
   AvatarStateCommand,
 } from '../lib/avatarStateController';
+import type { MouthConfig } from '../lib/mouthTimeline';
 
 
 const STATE_LABELS: Record<AvatarState, string> = {
@@ -17,6 +19,9 @@ const STATE_LABELS: Record<AvatarState, string> = {
 interface StateVideoInterviewerTileProps {
   command: AvatarStateCommand;
   mouthOpeningRef?: MutableRefObject<number>;
+  /** Realtime lip-sync frames from the server; omitted when the service is not in use. */
+  mouthConfig?: MouthConfig | null;
+  mouthFrameRef?: MutableRefObject<MouthFrame | null>;
   active?: boolean;
   className?: string;
   onSpeakingChange?: (speaking: boolean) => void;
@@ -27,6 +32,8 @@ interface StateVideoInterviewerTileProps {
 export default function StateVideoInterviewerTile({
   command,
   mouthOpeningRef,
+  mouthConfig = null,
+  mouthFrameRef,
   active = false,
   className,
   onSpeakingChange,
@@ -79,6 +86,7 @@ export default function StateVideoInterviewerTile({
       aria-label={'AI \u9762\u8bd5\u5b98\u52a8\u6001\u89c6\u9891\u753b\u9762'}
     >
       <NeuralInterviewer mouthOpeningRef={mouthOpeningRef} />
+      {mouthFrameRef && <MouthOverlay config={mouthConfig} frameRef={mouthFrameRef} />}
 
       {generatedVideoUrl && (
         <video

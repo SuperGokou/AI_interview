@@ -45,3 +45,56 @@ MuseTalk UNet 权重 SHA-256：
 
 生产接入前保留原网页音频口型回退。仅部署渲染服务不代表面试网页已接入。
 不要公开暴露渲染端口或把密钥加入前端包；跨机调用应走受限 SSH 隧道。
+
+## 实时口型流(已接入面试页面)
+
+`stream_service.py` 是面试中实际使用的服务：后端把面试官的语音边生成边送进来，服务返回嘴部区域的 JPEG 小图，浏览器按音频播放时间把它叠到面试官画面上。
+
+### 组件
+
+- `stream_service.py`：WebSocket `/stream`，仅监听 `127.0.0.1:8765`，Bearer 密钥鉴权，`MAX_SESSIONS` 限制同时连接数。
+- `stream_engine.py`：共享一套模型，每次只渲染新就绪的少量帧，多路会话轮流使用显卡。
+- `stream_logic.py`：语音缓冲、帧就绪判断(向后看 3 帧)、帧的二进制格式。
+- `lower_face.py`：下半脸合成(羽化、肤色匹配、局部锐化)。
+- `speech_gate.py`：句内短停顿保持生成的嘴型，持续静音 0.6 秒后才淡回原图。
+- `stream_probe.py`：延迟与并发实测工具。
+- `kunyao-mouth-stream.service`：systemd 单元，密钥放在 `/opt/kunyao-musetalk/service.env`(权限 600)。
+
+### 部署
+
+```sh
+# GPU 主机上，脚本可重复执行
+/root/kunyao-gpu/setup-env.sh                 # 系统依赖 + PyTorch 2.7.1 (CUDA 12.8)
+systemctl enable --now kunyao-mouth-stream
+curl http://127.0.0.1:8765/health
+```
+
+应用服务器通过内网或 SSH 隧道访问，然后在应用的 `.env` 里配置：
+
+```env
+MOUTH_STREAM_URL=ws://127.0.0.1:18765/stream
+MOUTH_STREAM_KEY=<service.env 里的 GPU_API_KEY>
+MOUTH_PLAYBACK_DELAY_MS=450
+```
+
+```sh
+ssh -N -L 18765:127.0.0.1:8765 <gpu-host>     # 本地调试用的隧道
+```
+
+未配置、连不上、服务繁忙或中途断开时，面试照常进行，页面自动退回按音量驱动的近似口型。
+
+### 实测(NVIDIA L20，25 fps，每帧约 5.6 kB)
+
+| 场景 | 需要的播放延迟 |
+|------|----------------|
+| 1 路，本机回环 | 110-210 ms |
+| 2 路同时说话 | 约 320 ms |
+| 3 路同时说话 | 跟不上(整卡约 55 fps) |
+| 1 路，经公网 SSH 隧道(往返 188 ms) | 450 ms 时每段开头约 6 帧晚到，700 ms 时无晚到 |
+
+一张 L20 的上限是两路同时说话。晚到的帧会被跳过，那一小段显示近似口型。
+
+### 尚未验证
+
+- 浏览器里的实际观感(叠加位置、边缘是否可见、音画是否对齐)需要真人面试确认；自动化只验证到“每一帧在其音频播放前送达”。
+- 底图是静止人像，除嘴部外没有头部动作。

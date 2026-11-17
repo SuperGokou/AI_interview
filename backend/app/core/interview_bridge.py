@@ -7,6 +7,7 @@
 - {"kind": "audio", "data": <pcm bytes>}        面试官语音(PCM16 24kHz)
 - {"kind": "transcript", "text": <str>}         面试官文字转写
 - {"kind": "user_transcript", "text": <str>}    候选人语音转写(SDK 支持时)
+- {"kind": "response_done"}                      面试官本轮回复的音频已全部下发
 - {"kind": "speech_started"}                     服务端 VAD 检测到候选人开口
 - {"kind": "close"}                              会话关闭
 """
@@ -104,8 +105,12 @@ class InterviewBridge:
             self._transcript_buffer += delta
             if delta:
                 self._emit({"kind": "transcript_delta", "text": delta})
-        elif event_type in (_EVT_TRANSCRIPT_DONE, _EVT_RESPONSE_DONE):
+        elif event_type == _EVT_TRANSCRIPT_DONE:
             self._flush_transcript()
+        elif event_type == _EVT_RESPONSE_DONE:
+            self._flush_transcript()
+            # All audio of this reply has been delivered (or it was cancelled).
+            self._emit({"kind": "response_done"})
         elif event_type == _EVT_USER_TRANSCRIPT:
             self._emit({"kind": "user_transcript", "text": message.get("transcript", "")})
         elif event_type == _EVT_SPEECH_STARTED:

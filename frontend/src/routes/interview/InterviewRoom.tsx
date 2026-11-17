@@ -472,6 +472,8 @@ export default function InterviewRoom() {
             <StateVideoInterviewerTile
               command={avatarCommand}
               mouthOpeningRef={session.mouthOpeningRef}
+              mouthConfig={session.mouthConfig}
+              mouthFrameRef={session.mouthFrameRef}
               active={session.active}
               onSpeakingChange={setAvatarSpeaking}
               className="h-full min-h-[360px]"

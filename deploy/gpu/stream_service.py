@@ -109,6 +109,8 @@ async def _serve(ws: WebSocket, engine, rate: int) -> None:
                 continue
             kind = _message_type(message.get("text"))
             if kind == "end":
+                if state["buffer"].empty:
+                    continue  # nothing was said: there is no utterance to finish
                 state["buffer"].end()
                 wake.set()
             elif kind == "reset":

@@ -31,6 +31,7 @@
 - **Automatic evaluation report** - When the interview ends, **DeepSeek** scores professional ability, communication and job match from the transcript and writes feedback.
 - **Integrity signals** - Live AI-read-answer detection, plus a post-interview analysis of answer-latency patterns, main-question vs follow-up score gaps, and similarity to AI-generated answers; each finding is stored with its evidence and rolled up into a green / yellow / red level.
 - **Supervisor links** - Read-only links that follow the live transcript without exposing the candidate token.
+- **Realtime lip-sync (optional)** - A GPU service renders the interviewer's mouth from her speech as it is produced; the browser paints each frame on the audio playback clock and falls back to an audio-driven mouth whenever frames are missing.
 - **Camera welcome** - On-device person detection (**MediaPipe**, WASM) plays the greeting clip when someone walks up; no lobby frame leaves the browser.
 - **Fail-closed admin boundary** - HTTP Basic auth, wrong-password throttling, same-origin write checks and a Content-Security-Policy on every page.
 - **Single-container deploy** - One image serves the API and the built frontend; Caddy adds automatic HTTPS.
@@ -142,7 +143,7 @@ AI_interview/
 ├── deploy/
 │   ├── compose.yml               # app + Caddy
 │   ├── Caddyfile                 # HTTPS, compression, HSTS
-│   └── gpu/                      # optional avatar research tools (not required)
+│   └── gpu/                      # optional realtime lip-sync service (MuseTalk) for a GPU host
 ├── Dockerfile                    # multi-stage: build frontend, run backend
 └── docker-compose.yml            # local single-container run
 ```
@@ -347,6 +348,7 @@ All endpoints not marked public require the admin credentials.
 | Interviewer voices | Serena, Sunny, Kiki, Tina, Ethan, Dylan, Peter, Aiden | per job, default `QWEN_OMNI_VOICE` |
 | Scoring and AI-text detection | `deepseek-chat` (any OpenAI-compatible endpoint) | `DEEPSEEK_MODEL`, `DEEPSEEK_BASE_URL`, `DEEPSEEK_API_KEY` |
 | AI-answer similarity embeddings | `text-embedding-v3` via DashScope (any OpenAI-compatible endpoint, e.g. self-hosted bge-m3) | `EMBEDDING_MODEL`, `EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY` |
+| Realtime lip-sync | MuseTalk 1.5 on a GPU host (`deploy/gpu`) | `MOUTH_STREAM_URL`, `MOUTH_STREAM_KEY`, `MOUTH_PLAYBACK_DELAY_MS` |
 | Lobby person detection | EfficientDet Lite0 via MediaPipe (in browser) | bundled |
 
 ## Domain Logic
@@ -398,6 +400,9 @@ DEV_ENDPOINTS=false                   # true enables the unauthenticated demo se
 CORS_ORIGINS=                         # comma-separated; empty for same-origin deployments
 CONTENT_SECURITY_POLICY=              # unset = built-in policy; empty string disables it
 HEYGEN_API_KEY=                       # optional streaming avatar
+MOUTH_STREAM_URL=                     # optional realtime lip-sync service (deploy/gpu); private network or tunnel only
+MOUTH_STREAM_KEY=
+MOUTH_PLAYBACK_DELAY_MS=450           # hold-back per reply so the first mouth frames can arrive
 INTERVIEWER_NAME=KY-BOT               # how the interviewer introduces itself (branding only)
 INTERVIEWER_COMPANY=江苏坤曜智能科技有限公司
 
@@ -427,7 +432,8 @@ EMBEDDING_MODEL=text-embedding-v3     # or a self-hosted bge-m3 behind an OpenAI
 ## Limitations
 
 - Single organization with one shared admin credential: no tenants, SSO, roles or admin audit log.
-- The digital interviewer uses pre-rendered footage with an audio-driven mouth; it is not frame-accurate lip sync.
+- Without the optional GPU service the interviewer's mouth is audio-driven and only approximate. With it, the mouth is rendered from the speech, but the base picture is a still portrait (no head motion), each reply starts about half a second later, and one NVIDIA L20 sustains two interviewers speaking at the same time.
+- Realtime lip-sync has been verified up to frame delivery timing; how it looks in a browser during a live interview has not been checked yet.
 - The visual integrity pipeline is in place, but the realtime model does not yet emit structured visual observations, so integrity currently reflects the text, timing and follow-up signals.
 - Integrity thresholds are reasoned defaults, not calibrated on labelled interviews; answer latency depends on the realtime provider emitting speech-onset events and has not been validated against a live model.
 - Correct answers to textbook questions naturally resemble AI answers, so the similarity signal is most meaningful on open-ended and experience questions.

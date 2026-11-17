@@ -183,6 +183,15 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(closed["code"], 1011)
         self.assertEqual(client.get("/health").json()["sessions"], 0)
 
+    def test_end_without_audio_is_ignored(self):
+        with self.client.websocket_connect("/stream", headers=self.auth) as ws:
+            ws.receive_text()
+            ws.send_text(json.dumps({"type": "end"}))  # must not stall the next utterance
+            ws.send_bytes(pcm(0.2))
+            ws.send_text(json.dumps({"type": "end"}))
+            frames, done = self.collect(ws)
+            self.assertEqual(done, {"type": "done", "utterance": 0, "frames": 5})
+
     def test_refuses_sessions_beyond_capacity(self):
         with self.client.websocket_connect("/stream", headers=self.auth) as first:
             first.receive_text()

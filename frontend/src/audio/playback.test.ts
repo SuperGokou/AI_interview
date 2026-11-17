@@ -18,3 +18,10 @@ test('reset stops queued audio and closes the mouth',()=>{
  const {player,sources}=setup();player.playPcm(new Int16Array(2400).fill(8000).buffer);player.reset();
  expect(sources[0].stop).toHaveBeenCalled();expect(player.sample()).toEqual({opening:0,playing:false});
 });
+test('playPcm reports where each chunk lands and honours a hold-back',()=>{
+ const {ctx,player}=setup();ctx.currentTime=1;
+ expect(player.playPcm(new Int16Array(2400).fill(8000).buffer,24000,1.45)).toBeCloseTo(1.45);
+ expect(player.playPcm(new Int16Array(2400).fill(8000).buffer)).toBeCloseTo(1.55);
+ expect(player.playPcm(new Int16Array(0).buffer)).toBeNull();
+ expect(player.now()).toBe(1);
+});

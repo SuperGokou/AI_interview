@@ -25,6 +25,11 @@ def _no_model_services_for_post_interview_analysis(monkeypatch):
     monkeypatch.setattr("app.api.interview_ws.review_client_factory", lambda: None)
     monkeypatch.setattr("app.api.interview_ws.embedder_factory", lambda: None)
 
+    async def no_mouth_stream():
+        return None
+
+    monkeypatch.setattr("app.api.interview_ws.mouth_stream_factory", no_mouth_stream)
+
 
 @pytest.fixture
 def _engine():

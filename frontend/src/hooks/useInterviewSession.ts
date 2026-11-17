@@ -3,7 +3,17 @@ import { arrayBufferToBase64, base64ToArrayBuffer } from '../audio/base64';
 import { floatTo16BitPCM } from '../audio/pcm';
 import { createPlayer, type PcmPlayer } from '../audio/playback';
 import { interviewWsUrl } from '../lib/api';
+import type { MouthFrame } from '../components/MouthOverlay';
 import type { AvatarStateCommand } from '../lib/avatarStateController';
+import {
+  MouthTimeline,
+  enqueueFrame,
+  parseMouthConfig,
+  parseMouthFrame,
+  pickDueFrame,
+  type MouthConfig,
+  type TimedFrame,
+} from '../lib/mouthTimeline';
 import type { IntegrityLevel } from '../types';
 
 const INPUT_SAMPLE_RATE = 16000;
@@ -18,6 +28,11 @@ const WORKLET_URL = '/audio/pcm-worklet.js';
 const MAX_FRAME_WIDTH = 640;
 // Skip a camera frame when the socket is backed up, so audio is never queued behind video.
 const MAX_BUFFERED_BYTES = 512 * 1024;
+// A shown mouth frame stays up this long without a successor before the overlay
+// clears and the audio-driven mouth takes over again (late or missing frames).
+const MOUTH_FRAME_HOLD_S = 0.2;
+// Frames queued further ahead than this are a sign of a stuck clock; drop them.
+const MAX_QUEUED_MOUTH_FRAMES = 400;
 
 export interface UseInterviewSessionResult {
   start: (token: string, preStream?: MediaStream) => Promise<void>;
@@ -33,6 +48,10 @@ export interface UseInterviewSessionResult {
   integrity: IntegrityLevel;
   speaking: boolean;
   mouthOpeningRef: React.MutableRefObject<number>;
+  /** Realtime lip-sync: geometry from the server, null when the service is not in use. */
+  mouthConfig: MouthConfig | null;
+  /** The mouth frame to show right now, kept in step with audio playback. */
+  mouthFrameRef: React.MutableRefObject<MouthFrame | null>;
   error: string;
 }
 
@@ -90,6 +109,25 @@ export function useInterviewSession(
   const micEnabledRef = useRef(true);
   const cameraEnabledRef = useRef(true);
 
+  // Realtime lip-sync state. Refs, because frames arrive and are shown far more
+  // often than React should re-render.
+  const [mouthConfig, setMouthConfig] = useState<MouthConfig | null>(null);
+  const mouthConfigRef = useRef<MouthConfig | null>(null);
+  const mouthTimelineRef = useRef(new MouthTimeline(OUTPUT_SAMPLE_RATE));
+  const mouthQueueRef = useRef<TimedFrame<ImageBitmap>[]>([]);
+  const mouthShownRef = useRef<TimedFrame<ImageBitmap> | null>(null);
+  const mouthFrameRef = useRef<MouthFrame | null>(null);
+  const mouthSerialRef = useRef(0);
+
+  const clearMouthFrames = useCallback(() => {
+    mouthQueueRef.current.forEach((frame) => frame.image.close());
+    mouthQueueRef.current = [];
+    mouthShownRef.current?.image.close();
+    mouthShownRef.current = null;
+    mouthFrameRef.current = null;
+    mouthTimelineRef.current.clear();
+  }, []);
+
   useEffect(() => {
     if (options.playAudio !== false) return;
 
@@ -101,12 +139,35 @@ export function useInterviewSession(
     setSpeaking(false);
   }, [options.playAudio]);
 
+  /** Show the frame that is due at `now`; returns whether a frame is on screen. */
+  const advanceMouthFrame = useCallback((now: number): boolean => {
+    const pick = pickDueFrame(mouthQueueRef.current, now);
+    mouthQueueRef.current = pick.waiting;
+    pick.skipped.forEach((frame) => frame.image.close());
+    if (pick.due) {
+      mouthShownRef.current?.image.close();
+      mouthShownRef.current = pick.due;
+      mouthSerialRef.current += 1;
+      mouthFrameRef.current = { image: pick.due.image, serial: mouthSerialRef.current };
+    }
+    const shown = mouthShownRef.current;
+    if (shown && now - shown.time > MOUTH_FRAME_HOLD_S) {
+      shown.image.close();
+      mouthShownRef.current = null;
+      mouthFrameRef.current = null;
+    }
+    return mouthShownRef.current !== null;
+  }, []);
+
   useEffect(() => {
     if (!active) { mouthOpeningRef.current = 0; return; }
     let frame = 0, wasPlaying = false;
     const tick = () => {
       const sample = playerRef.current?.sample() ?? { opening: 0, playing: false };
-      mouthOpeningRef.current = sample.opening;
+      const lipSynced = advanceMouthFrame(playerRef.current?.now() ?? 0);
+      // While server-rendered frames are on screen they are the mouth; the
+      // audio-driven approximation only fills in when they are missing.
+      mouthOpeningRef.current = lipSynced ? 0 : sample.opening;
       if (sample.playing !== wasPlaying) {
         wasPlaying = sample.playing;
         setSpeaking(sample.playing);
@@ -117,7 +178,7 @@ export function useInterviewSession(
     };
     frame = requestAnimationFrame(tick);
     return () => { cancelAnimationFrame(frame); mouthOpeningRef.current = 0; };
-  }, [active]);
+  }, [active, advanceMouthFrame]);
 
   const setMicEnabled = useCallback((enabled: boolean) => {
     micEnabledRef.current = enabled;
@@ -170,6 +231,9 @@ export function useInterviewSession(
 
     playerRef.current?.reset();
     playerRef.current = null;
+    clearMouthFrames();
+    mouthConfigRef.current = null;
+    setMouthConfig(null);
 
     if (playbackCtxRef.current && playbackCtxRef.current.state !== 'closed') {
       void playbackCtxRef.current.close();
@@ -187,7 +251,7 @@ export function useInterviewSession(
     setError('');
     setActive(false);
     setSpeaking(false);
-  }, []);
+  }, [clearMouthFrames]);
 
   // Cleanup on unmount
   useEffect(() => stop, [stop]);
@@ -268,7 +332,36 @@ export function useInterviewSession(
 
       // Open WebSocket
       const ws = new WebSocket(interviewWsUrl(token));
+      ws.binaryType = 'arraybuffer'; // mouth frames arrive as binary messages
       wsRef.current = ws;
+
+      const handleMouthFrame = (message: ArrayBuffer) => {
+        const config = mouthConfigRef.current;
+        const parsed = parseMouthFrame(message);
+        if (!config || !parsed || typeof createImageBitmap !== 'function') return;
+        if (mouthQueueRef.current.length >= MAX_QUEUED_MOUTH_FRAMES) return;
+        void createImageBitmap(new Blob([parsed.jpeg], { type: 'image/jpeg' }))
+          .then((image) => {
+            // Resolve the time after decoding: the audio for this frame is
+            // always scheduled before the frame can arrive.
+            const time = mouthTimelineRef.current.timeOfFrame(
+              parsed.utterance,
+              parsed.index,
+              config.fps
+            );
+            if (wsRef.current !== ws || time === null) {
+              image.close();
+              return;
+            }
+            mouthQueueRef.current = enqueueFrame(mouthQueueRef.current, {
+              utterance: parsed.utterance,
+              index: parsed.index,
+              time,
+              image,
+            });
+          })
+          .catch(() => undefined); // an undecodable frame is simply skipped
+      };
 
       ws.onerror = () => {
         setError('WebSocket 连接失败');
@@ -285,9 +378,15 @@ export function useInterviewSession(
       };
 
       ws.onmessage = (event: MessageEvent) => {
+        if (event.data instanceof ArrayBuffer) {
+          handleMouthFrame(event.data);
+          return;
+        }
         let msg: {
           type?: string;
           data?: string;
+          u?: number;
+          p?: number;
           text?: string;
           level?: string;
           message?: string;
@@ -311,7 +410,19 @@ export function useInterviewSession(
             void playbackCtxRef.current.resume();
           }
           const pcm = base64ToArrayBuffer(msg.data);
-          playerRef.current?.playPcm(pcm, OUTPUT_SAMPLE_RATE);
+          const tagged = typeof msg.u === 'number' && typeof msg.p === 'number';
+          const config = mouthConfigRef.current;
+          const ctx = playbackCtxRef.current;
+          // Hold back the start of each utterance so its first mouth frames can
+          // arrive; later chunks queue behind it and need no extra delay.
+          const notBefore =
+            config && ctx && tagged && !mouthTimelineRef.current.hasUtterance(msg.u as number)
+              ? ctx.currentTime + config.delaySeconds
+              : 0;
+          const startTime = playerRef.current?.playPcm(pcm, OUTPUT_SAMPLE_RATE, notBefore);
+          if (config && tagged && typeof startTime === 'number') {
+            mouthTimelineRef.current.addAudio(msg.u as number, msg.p as number, startTime);
+          }
 
         } else if (
           msg.type === 'transcript_delta' &&
@@ -348,6 +459,10 @@ export function useInterviewSession(
               videoUrl: typeof msg.videoUrl === 'string' ? msg.videoUrl : undefined,
             });
           }
+        } else if (msg.type === 'mouth_config') {
+          const config = parseMouthConfig(msg);
+          mouthConfigRef.current = config;
+          setMouthConfig(config);
         } else if (msg.type === 'integrity' && typeof msg.level === 'string') {
           const lvl = msg.level as IntegrityLevel;
           if (lvl === 'green' || lvl === 'yellow' || lvl === 'red') {
@@ -491,6 +606,8 @@ export function useInterviewSession(
     integrity,
     speaking,
     mouthOpeningRef,
+    mouthConfig,
+    mouthFrameRef,
     error,
   };
 }
