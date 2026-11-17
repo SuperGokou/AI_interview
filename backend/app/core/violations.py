@@ -7,6 +7,8 @@
 
 from dataclasses import dataclass
 
+from app.core.silence import ONE_OFF_EN, ONE_OFF_ZH
+
 # 计入违规的类型 → 面试官提醒时怎么描述它。
 _WHAT_ZH = {
     "keyboard_typing": "听到了持续的键盘敲击声,本次面试是口头作答,请不要使用键盘",
@@ -21,6 +23,11 @@ _WHAT_EN = {
     "other_voice": "another person's voice was heard; nobody may prompt you during the interview",
 }
 WARNED_KINDS = frozenset(_WHAT_ZH)
+
+# 不计入违规、但面试官会顺口提醒一句的情况。
+REMINDED_KINDS = frozenset({"gaze_off_screen"})
+_ALSO_ZH = {"gaze_off_screen": "而且对方一直低着头或看着别处,请对方抬起头、看着镜头作答"}
+_ALSO_EN = {"gaze_off_screen": "and they keep looking down or away; ask them to look up at the camera"}
 
 WARN = "warn"
 END = "end"
@@ -39,24 +46,43 @@ def _describe(kinds: list[str], table: dict[str, str], joiner: str) -> str:
     return joiner.join(table[k] for k in sorted(set(kinds)) if k in table)
 
 
+def needs_reminder(kinds: list[str]) -> bool:
+    return bool(REMINDED_KINDS.intersection(kinds))
+
+
+def reminder_text(language: str = "zh") -> str:
+    """A friendly nudge that does not count as a violation: look up, please."""
+    if language == "en":
+        return (
+            "The candidate has kept their head down or looked away from the screen for a while. In one "
+            "friendly sentence, ask them to look up and face the camera while answering. Do not call it a "
+            "violation and do not accuse them of anything." + ONE_OFF_EN
+        )
+    return (
+        "候选人已经有一阵一直低着头,或者看着屏幕以外的地方。"
+        "请用一句友好自然的话提醒对方抬起头、看着镜头作答,就像真人面试官会说的那样。"
+        "不要说这是违规,不要指责。" + ONE_OFF_ZH
+    )
+
+
 def warning_text(kinds: list[str], count: int, limit: int, language: str = "zh") -> str:
     """What the interviewer is told to say for the count-th violation (count < limit)."""
     final = count >= limit - 1
     if language == "en":
         last = " Make clear that this is the final warning." if final else ""
         return (
-            f"The proctoring system just noticed this: {_describe(kinds, _WHAT_EN, '; ')}. "
+            f"The proctoring system just noticed this: {_describe(kinds, {**_WHAT_EN, **_ALSO_EN}, '; ')}. "
             "Pause the interview politely and tell the candidate in one or two natural sentences what was "
             f"noticed and what you ask of them. Say that this is violation {count} and that the interview "
             f"ends at violation {limit}.{last} Then pick the current question back up. Stay calm and "
-            "matter-of-fact; do not accuse them of cheating."
+            "matter-of-fact; do not accuse them of cheating." + ONE_OFF_EN
         )
     last = "明确告诉对方这是最后一次提醒。" if final else ""
     return (
-        f"监考系统刚刚发现:{_describe(kinds, _WHAT_ZH, ';')}。"
+        f"监考系统刚刚发现:{_describe(kinds, {**_WHAT_ZH, **_ALSO_ZH}, ';')}。"
         "请礼貌地暂停一下,用一两句自然的话向候选人说明发现了什么、希望对方怎么做;"
         f"并说明这是第 {count} 次违规,累计 {limit} 次将直接结束面试。{last}"
-        "说完后接着当前的问题继续。语气平和、就事论事,不要指责对方作弊。"
+        "说完后请对方接着刚才的问题继续回答。语气平和、就事论事,不要指责对方作弊。" + ONE_OFF_ZH
     )
 
 

@@ -142,10 +142,20 @@ def test_falling_back_from_the_omni_model_drops_the_sound_mid_request():
     assert proctor.check(b"jpeg", b"RIFFwav")["flags"] == ["multi_person"]
 
 
-def test_sounds_need_two_checks_in_a_row():
+def test_typing_counts_at_once_a_second_voice_needs_two_checks():
     monitor = ProctorMonitor()
-    assert monitor.update(["other_voice", "keyboard_typing"], 0) == []
-    assert monitor.update(["other_voice", "keyboard_typing"], 5) == ["keyboard_typing", "other_voice"]
+    assert monitor.update(["other_voice", "keyboard_typing"], 0) == ["keyboard_typing"]
+    assert monitor.update(["other_voice", "keyboard_typing"], 5) == ["other_voice"]
+
+
+def test_head_down_while_typing_is_heard_needs_no_second_look():
+    monitor = ProctorMonitor()
+    assert monitor.update(["gaze_off_screen"], 0) == []  # on its own it could be a glance
+    assert monitor.update([], 5) == []
+    assert monitor.update(["gaze_off_screen", "keyboard_typing"], 10) == [
+        "gaze_off_screen",
+        "keyboard_typing",
+    ]
 
 
 def test_audio_window_keeps_recent_sound_and_skips_silence():

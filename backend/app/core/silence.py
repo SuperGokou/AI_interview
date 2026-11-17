@@ -14,12 +14,24 @@ PAUSE = "pause"  # 连着几题没人应答,说明情况并等待
 _VARY_ZH = "这不是第一次遇到沉默了:换一种说法,不要重复你之前说过的原话。"
 _VARY_EN = "This is not the first silence: phrase it differently from what you said before."
 
+# 这些提示会留在对话记录里。必须说清它只管接下来这一句,否则模型会把
+# 『不要问新的问题』当成长期规则,候选人认真回答之后它也只会『嗯,我听到了』。
+ONE_OFF_ZH = (
+    "(以上是只针对你接下来这一句话的临时提示。这一句说完后提示即作废:"
+    "之后照常面试,认真听候选人的回答,针对回答内容追问,并按题库推进。)"
+)
+ONE_OFF_EN = (
+    " (The above applies only to your very next sentence. After saying it, it no longer applies: "
+    "carry on interviewing as normal, listen to the answer, follow up on what was said and move "
+    "through the question bank.)"
+)
+
 NUDGE_ZH = {
     CHECK_IN: (
         "候选人听完问题后已经有一阵没有说话,可能在思考,也可能没听清。"
         "像真人面试官那样用一句简短自然的话关心一下,例如问对方是否需要你把问题再说一遍,"
         "或者告诉对方可以先说说大致的思路。直接说这句话本身,不要以『没关系』开头,不要称呼全名。"
-        "不要给提示,不要透露答案,不要问新的问题。"
+        "这一句里不要给提示、不要透露答案、也先不问新的问题。"
     ),
     MOVE_ON: (
         "候选人仍然没有回答。自然地过渡一句(比如这道题先放一放),然后问题库里的下一道题;"
@@ -28,7 +40,7 @@ NUDGE_ZH = {
     PAUSE: (
         "候选人已经连续几道题都没有作答,可能是离开了或者设备出了问题。"
         "用一两句话说明:你这边听不到对方的声音,请对方检查一下麦克风;你会在这里等,对方准备好后直接说话就可以继续。"
-        "不要再问新的问题。"
+        "这一句里先不要问新的问题。"
     ),
 }
 
@@ -53,7 +65,8 @@ NUDGE_EN = {
 def nudge_text(stage: str, language: str = "zh", *, repeated: bool = False) -> str:
     en = language == "en"
     text = (NUDGE_EN if en else NUDGE_ZH)[stage]
-    return f"{text}{_VARY_EN if en else _VARY_ZH}" if repeated else text
+    vary = (_VARY_EN if en else _VARY_ZH) if repeated else ""
+    return f"{text}{vary}{ONE_OFF_EN if en else ONE_OFF_ZH}"
 
 
 @dataclass

@@ -35,6 +35,8 @@ from app.core.violations import (
     ViolationPolicy,
     end_notice,
     ending_text,
+    needs_reminder,
+    reminder_text,
     warning_text,
 )
 from app.core.interview_bridge import InterviewBridge
@@ -411,21 +413,31 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
         as a person would, instead of playing the rest of the reply over them."""
         try:
             await asyncio.sleep(settings.barge_in_hold_ms / 1000)
-            now = clock()
-            if not silence.interviewer_speaking(now, margin=playback_margin_s):
-                return
-            if reply["generating"]:
-                reply["dropping"] = True
-                await bridge.cancel_response()
-                if mouth is not None:
-                    await mouth.reset()
-                if turn["samples"]:
-                    turn["utterance"] += 1
-                    turn["samples"] = 0
-            silence.cut_short(now)
-            await ws.send_json({"type": "interrupt"})
+            await stop_speaking()
         finally:
             barge["task"] = None
+
+    async def stop_speaking():
+        """Cut off whatever the interviewer is saying, on the server and in the page."""
+        now = clock()
+        if not silence.interviewer_speaking(now, margin=playback_margin_s):
+            return
+        if reply["generating"]:
+            reply["dropping"] = True
+            await bridge.cancel_response()
+            if mouth is not None:
+                await mouth.reset()
+            if turn["samples"]:
+                turn["utterance"] += 1
+                turn["samples"] = 0
+        silence.cut_short(now)
+        await ws.send_json({"type": "interrupt"})
+
+    async def say_now(text: str):
+        """Have the interviewer say something right away rather than after the
+        sentence it is in the middle of: a warning that comes 15 s late is useless."""
+        await stop_speaking()
+        await bridge.trigger_response(text)
 
     async def pump_downstream():
         try:
@@ -549,7 +561,7 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
     async def end_for_violations(warnings: int):
         """Say why, give the interviewer time to finish the sentence, then hang up."""
         await run_in_threadpool(_record_termination, bind, session_id, warnings)
-        await bridge.trigger_response(ending_text(job.language))
+        await say_now(ending_text(job.language))
         await asyncio.sleep(FAREWELL_SECONDS)
         await ws.send_json({"type": "ended", "message": end_notice(job.language)})
         await ws.close()
@@ -584,9 +596,10 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                     await end_for_violations(policy.count)
                     return
                 if action is not None:
-                    await bridge.trigger_response(
-                        warning_text(kinds, policy.count, policy.limit, job.language)
-                    )
+                    await say_now(warning_text(kinds, policy.count, policy.limit, job.language))
+                elif needs_reminder(kinds):
+                    # Not a violation; said once the interviewer is free.
+                    await bridge.trigger_response(reminder_text(job.language))
             except asyncio.CancelledError:
                 raise
             except ProctorUnavailable as exc:

@@ -34,6 +34,31 @@ def test_wording_says_what_was_noticed_and_how_many_are_left():
     assert "violation 2" in warning_text(["phone"], 2, 3, "en")
 
 
+def test_looking_down_gets_a_friendly_reminder_not_a_violation():
+    from app.core.violations import needs_reminder, reminder_text
+
+    policy = ViolationPolicy(limit=3)
+    assert policy.record(["gaze_off_screen"]) is None and policy.count == 0
+    assert needs_reminder(["gaze_off_screen"]) and not needs_reminder(["phone"])
+    assert "抬起头" in reminder_text() and "不要说这是违规" in reminder_text()
+    # Typing with the head down: one warning that covers both.
+    both = warning_text(["keyboard_typing", "gaze_off_screen"], 1, 3)
+    assert "键盘" in both and "抬起头" in both
+
+
+def test_prompts_are_marked_as_one_off():
+    """These prompts stay in the conversation. Read as standing rules they made the
+    interviewer answer real answers with just 'I heard you' (seen in an interview)."""
+    from app.core.silence import CHECK_IN, MOVE_ON, PAUSE, nudge_text
+    from app.core.violations import reminder_text
+
+    texts = [nudge_text(stage) for stage in (CHECK_IN, MOVE_ON, PAUSE)]
+    texts += [warning_text(["phone"], 1, 3), reminder_text()]
+    for text in texts:
+        assert "提示即作废" in text and "针对回答内容追问" in text
+    assert "carry on interviewing" in warning_text(["phone"], 1, 3, "en")
+
+
 class _Typing:
     accepts_audio = True
 

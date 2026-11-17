@@ -57,7 +57,9 @@ _SYSTEM_WITH_AUDIO = (
     "phone=能看到手机,不管是拿在手里、举到镜头前、放在桌上还是只露出一部分;"
     "suspicious_object=候选人正在使用或查看的第二块屏幕、平板、纸质资料,或戴着耳机。"
     "背景里普通摆放、没有在用的显示器、电视、书本,以及候选人面试用的这台电脑,都不算;"
-    "keyboard_typing=能清楚听到持续的键盘敲击声(连续多下),偶尔一两下点击或鼠标声不算;"
+    "keyboard_typing=能清楚听到持续的键盘敲击声(连续多下),偶尔一两下点击或鼠标声不算。"
+    "听到键盘声时,要特别留意候选人的神态和姿势:是否低着头、眼睛是否盯着下方或屏幕以外、"
+    "肩膀手臂是否有打字的动作,并把看到的写进 detail;如果同时明显低头或看着别处,一并给出 gaze_off_screen;"
     "other_voice=能清楚听到候选人以外的真人在说话或低声提示,而且听得出是在对候选人说话。"
     "模糊不清、听不出内容的人声,以及底噪里若有若无的声音,一律不算。面试官是 AI,它的声音可能从扬声器传进录音,"
     "那不算其他人;电视、广播等明显的背景节目声也不算,归入 background_noise;"
@@ -201,10 +203,12 @@ class VisionProctor:
 # Things that are either in the picture or not: one clear sighting is enough, and
 # they can be brief (a phone held up for a few seconds). Gaze and absence are
 # judgement calls on a single frame, so those need two checks in a row.
-# Everything heard has to persist across two checks. A second voice used to
+# Typing is unmistakable when it is clearly heard and has no place in a spoken
+# interview, so it counts at once and the candidate is told straight away.
+# A second voice and noise have to persist across two checks. A second voice used to
 # count at once, but a faint echo or a murmur in the noise floor was enough to
 # raise it, and it is a violation that can end the interview.
-IMMEDIATE_FLAGS = frozenset({"multi_person", "phone", "suspicious_object"})
+IMMEDIATE_FLAGS = frozenset({"multi_person", "phone", "suspicious_object", "keyboard_typing"})
 
 
 class ProctorMonitor:
@@ -218,10 +222,14 @@ class ProctorMonitor:
 
     def update(self, flags: list[str], now: float) -> list[str]:
         current = frozenset(flags)
+        # Head down while typing is heard is not a glance: no second look needed.
+        immediate = IMMEDIATE_FLAGS | (
+            {"gaze_off_screen"} if "keyboard_typing" in current else frozenset()
+        )
         confirmed = [
             flag
             for flag in sorted(current)
-            if (flag in IMMEDIATE_FLAGS or flag in self._previous)
+            if (flag in immediate or flag in self._previous)
             and now - self._reported_at.get(flag, float("-inf")) >= self._cooldown_s
         ]
         self._reported_at = {**self._reported_at, **{flag: now for flag in confirmed}}
