@@ -13,6 +13,10 @@ _VISION_RULES = {
     "multi_person": ("multi_person", "high"),
     "person_absent": ("person_absent", "high"),
     "suspicious_object": ("suspicious_object", "high"),
+    # 声音线索是模型听出来的,单独一条只算提醒。
+    "keyboard_typing": ("keyboard_typing", "medium"),
+    "other_voice": ("other_voice", "medium"),
+    "background_noise": ("background_noise", "low"),
 }
 
 

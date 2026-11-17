@@ -349,7 +349,7 @@ All endpoints not marked public require the admin credentials.
 | Scoring and AI-text detection | `deepseek-chat` (any OpenAI-compatible endpoint) | `DEEPSEEK_MODEL`, `DEEPSEEK_BASE_URL`, `DEEPSEEK_API_KEY` |
 | AI-answer similarity embeddings | `text-embedding-v3` via DashScope (any OpenAI-compatible endpoint, e.g. self-hosted bge-m3) | `EMBEDDING_MODEL`, `EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY` |
 | Realtime talking head | Ditto (Ant Group, Apache-2.0) on a GPU host (`deploy/gpu/ditto`) | `MOUTH_STREAM_URL`, `MOUTH_STREAM_KEY`, `MOUTH_PLAYBACK_DELAY_MS` |
-| Camera proctoring | `qwen-vl-max` via DashScope (any OpenAI-compatible vision endpoint) | `PROCTOR_MODEL`, `PROCTOR_BASE_URL`, `PROCTOR_API_KEY`, `PROCTOR_INTERVAL_S` |
+| Camera and sound proctoring | `qwen3.8-omni-flash` via DashScope (picture-only fallback: any OpenAI-compatible vision endpoint) | `PROCTOR_MODEL`, `PROCTOR_BASE_URL`, `PROCTOR_API_KEY`, `PROCTOR_INTERVAL_S` |
 | Lobby person detection | EfficientDet Lite0 via MediaPipe (in browser) | bundled |
 
 ## Domain Logic

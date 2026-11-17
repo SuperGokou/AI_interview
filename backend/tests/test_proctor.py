@@ -61,8 +61,7 @@ def test_vision_client_falls_back_to_the_next_model_and_gives_up_cleanly():
             calls.append(model)
             if model != "works":
                 raise _Missing("Model not exist.")
-            message = type("M", (), {"content": '{"flags": [], "detail": "ok"}'})()
-            return type("R", (), {"choices": [type("C", (), {"message": message})()]})()
+            return _stream('{"flags": [], ', '"detail": "ok"}')
 
     client = type("Client", (), {"chat": type("Chat", (), {"completions": _Completions()})()})()
     vision = OpenAICompatibleVision(client=client, model="gone-1, gone-2, works")
@@ -73,6 +72,151 @@ def test_vision_client_falls_back_to_the_next_model_and_gives_up_cleanly():
     none_left = OpenAICompatibleVision(client=client, model="gone-1")
     with pytest.raises(ProctorUnavailable):
         none_left.describe(system="s", jpeg=b"x")
+
+
+def _stream(*pieces):
+    """A streamed chat completion: one chunk per piece, then a usage-only chunk."""
+    chunks = [
+        type("Chunk", (), {"choices": [type("C", (), {"delta": type("D", (), {"content": p})()})()]})()
+        for p in pieces
+    ]
+    return [*chunks, type("Chunk", (), {"choices": []})()]
+
+
+class _Recorder:
+    """Stands in for the OpenAI client and keeps every request."""
+
+    def __init__(self, missing=()):
+        self.requests, self._missing = [], set(missing)
+        self.chat = type("Chat", (), {"completions": self})()
+
+    def create(self, **kwargs):
+        self.requests.append(kwargs)
+        if kwargs["model"] in self._missing:
+            raise type("Missing", (Exception,), {"status_code": 404})("Model not exist.")
+        return _stream('{"flags": ["keyboard_typing", "multi_person"], "detail": "有键盘声"}')
+
+
+def _parts(request):
+    return [part["type"] for part in request["messages"][1]["content"]]
+
+
+def test_omni_model_gets_the_sound_and_may_report_sound_flags():
+    from app.core.proctor import OpenAICompatibleVision
+
+    client = _Recorder()
+    proctor = VisionProctor(OpenAICompatibleVision(client=client, model="qwen3.8-omni-flash, plain-vl"))
+    result = proctor.check(b"jpeg", b"RIFFwav", note="面试官正在说话")
+    assert result["flags"] == ["keyboard_typing", "multi_person"]
+    request = client.requests[0]
+    assert _parts(request) == ["image_url", "input_audio", "text"]
+    assert request["stream"] is True
+    assert "键盘" in request["messages"][0]["content"]
+    assert "面试官正在说话" in request["messages"][1]["content"][-1]["text"]
+
+
+def test_picture_only_model_never_gets_sound_and_sound_flags_are_dropped():
+    from app.core.proctor import OpenAICompatibleVision
+
+    client = _Recorder()
+    proctor = VisionProctor(OpenAICompatibleVision(client=client, model="plain-vl"))
+    assert proctor.check(b"jpeg", b"RIFFwav")["flags"] == ["multi_person"]
+    assert _parts(client.requests[0]) == ["image_url", "text"]
+    assert "键盘" not in client.requests[0]["messages"][0]["content"]
+
+
+def test_falling_back_from_the_omni_model_drops_the_sound_mid_request():
+    from app.core.proctor import OpenAICompatibleVision
+
+    client = _Recorder(missing={"qwen3.8-omni-flash"})
+    vision = OpenAICompatibleVision(client=client, model="qwen3.8-omni-flash, plain-vl")
+    proctor = VisionProctor(vision)
+    proctor.check(b"jpeg", b"RIFFwav")
+    assert [_parts(r) for r in client.requests] == [
+        ["image_url", "input_audio", "text"],
+        ["image_url", "text"],
+    ]
+    assert vision.accepts_audio is False
+    # From now on the model cannot hear, so what it says about sound is ignored.
+    assert proctor.check(b"jpeg", b"RIFFwav")["flags"] == ["multi_person"]
+
+
+def test_a_second_voice_counts_at_once_typing_needs_two_checks():
+    monitor = ProctorMonitor()
+    assert monitor.update(["other_voice", "keyboard_typing"], 0) == ["other_voice"]
+    assert monitor.update(["keyboard_typing"], 8) == ["keyboard_typing"]
+
+
+def test_audio_window_keeps_recent_sound_and_skips_silence():
+    import struct
+    import wave
+    from io import BytesIO
+
+    from app.core.proctor_audio import AudioWindow, pcm_to_wav, worth_hearing
+
+    loud = struct.pack("<8000h", *([4000, -4000] * 4000))  # 0.5 s
+    window = AudioWindow(max_seconds=2)
+    for _ in range(10):  # 5 s in, only the last 2 s kept
+        window.append(loud)
+    pcm = window.take()
+    assert len(pcm) == 2 * 16000 * 2
+    assert window.take() == b""
+    assert worth_hearing(pcm)
+    assert not worth_hearing(bytes(len(pcm)))  # silence
+    assert not worth_hearing(loud)  # too short
+    with wave.open(BytesIO(pcm_to_wav(pcm))) as wav:
+        assert (wav.getframerate(), wav.getnchannels(), wav.getnframes()) == (16000, 1, 32000)
+
+
+class _Hearing:
+    accepts_audio = True
+
+    def __init__(self):
+        self.calls = []
+
+    def describe(self, *, system, jpeg, wav=None, note=""):
+        self.calls.append((wav, note))
+        return json.dumps({"flags": ["other_voice"], "detail": "有人在旁边小声提示"})
+
+
+def test_websocket_sends_room_sound_to_the_proctor(client, db_session, monkeypatch):
+    import struct
+
+    job = models.Job(title="后端", jd="x", interviewer_voice="Tina")
+    cand = models.Candidate(name="李四")
+    db_session.add_all([job, cand])
+    db_session.commit()
+    db_session.add(models.InterviewSession(job_id=job.id, candidate_id=cand.id, link_token="tok-sound"))
+    db_session.commit()
+
+    hearing = _Hearing()
+    monkeypatch.setattr("app.api.interview_ws.bridge_factory", _Bridge)
+    monkeypatch.setattr("app.api.interview_ws.ai_detector_factory", lambda: object())
+    monkeypatch.setattr("app.api.interview_ws.proctor_factory", lambda: VisionProctor(hearing))
+
+    real_sleep = asyncio.sleep
+
+    async def fast_sleep(seconds):
+        await real_sleep(0.2 if seconds >= 1 else seconds)
+
+    monkeypatch.setattr("app.api.interview_ws.asyncio.sleep", fast_sleep)
+
+    second = struct.pack("<16000h", *([3000, -3000] * 8000))
+
+    def message(kind, payload):
+        return json.dumps({"type": kind, "data": base64.b64encode(payload).decode()})
+
+    with client.websocket_connect("/ws/interview?token=tok-sound") as ws:
+        for _ in range(3):
+            ws.send_text(message("proctor_audio", second))
+        ws.send_text(message("image", b"frame-1"))
+        assert ws.receive_json() == {"type": "integrity", "level": "yellow"}
+
+    db_session.expire_all()
+    events = db_session.query(models.CheatEvent).all()
+    assert [(e.kind, e.severity) for e in events] == [("other_voice", "medium")]
+    wav, _note = hearing.calls[0]
+    assert wav[:4] == b"RIFF" and len(wav) > 3 * 32000
 
 
 class _Bridge:

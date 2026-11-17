@@ -23,6 +23,8 @@ const JPEG_QUALITY = 0.6;
 // Served from public/ rather than bundled: Vite would inline a file this small
 // as a data: URL, which a strict script-src 'self' policy refuses to load.
 const WORKLET_URL = '/audio/pcm-worklet.js';
+// Proctoring audio goes up once a second rather than every 100 ms.
+const PROCTOR_AUDIO_BATCH_SAMPLES = 16_000;
 // Camera frames are only used for the model's visual context; 640px wide is
 // plenty and is several times smaller than a raw 720p/1080p frame.
 const MAX_FRAME_WIDTH = 640;
@@ -102,6 +104,7 @@ export function useInterviewSession(
   // All mutable session resources live in refs so cleanup closures always
   // reference the current values without stale captures.
   const streamRef = useRef<MediaStream | null>(null);
+  const proctorStreamRef = useRef<MediaStream | null>(null); // unprocessed mic, proctoring only
   const wsRef = useRef<WebSocket | null>(null);
   const captureCtxRef = useRef<AudioContext | null>(null);
   const playbackCtxRef = useRef<AudioContext | null>(null);
@@ -207,6 +210,8 @@ export function useInterviewSession(
     // Stop all camera/mic tracks
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
+    proctorStreamRef.current?.getTracks().forEach((t) => t.stop());
+    proctorStreamRef.current = null;
 
     if (videoRef.current) {
       videoRef.current.srcObject = null;
@@ -543,6 +548,55 @@ export function useInterviewSession(
           }
         };
         source.connect(workletNode);
+
+        // A second, unprocessed take of the microphone for proctoring only. The
+        // interviewer's feed above has noise suppression on, which removes exactly
+        // what proctoring listens for (typing, a second voice in the room).
+        // Best effort: the interview carries on without it.
+        try {
+          const proctorStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true, // keep the interviewer's own voice out
+              noiseSuppression: false,
+              autoGainControl: false,
+            },
+          });
+          if (wsRef.current !== ws) {
+            proctorStream.getTracks().forEach((t) => t.stop());
+            return;
+          }
+          proctorStreamRef.current = proctorStream;
+          const proctorNode = new AudioWorkletNode(captureCtx, 'pcm-worklet');
+          let pending: Float32Array[] = [];
+          let pendingSamples = 0;
+          proctorNode.port.onmessage = (e: MessageEvent) => {
+            const chunk = e.data as Float32Array;
+            pending.push(chunk);
+            pendingSamples += chunk.length;
+            if (pendingSamples < PROCTOR_AUDIO_BATCH_SAMPLES) return;
+            const joined = new Float32Array(pendingSamples);
+            let offset = 0;
+            for (const part of pending) {
+              joined.set(part, offset);
+              offset += part.length;
+            }
+            pending = [];
+            pendingSamples = 0;
+            // A muted microphone stays muted for proctoring too.
+            const socket = wsRef.current;
+            if (!micEnabledRef.current || socket?.readyState !== WebSocket.OPEN) return;
+            if (socket.bufferedAmount > MAX_BUFFERED_BYTES) return;
+            socket.send(
+              JSON.stringify({
+                type: 'proctor_audio',
+                data: arrayBufferToBase64(floatTo16BitPCM(joined)),
+              })
+            );
+          };
+          captureCtx.createMediaStreamSource(proctorStream).connect(proctorNode);
+        } catch {
+          // No second capture on this device: the server falls back to the main feed.
+        }
       }
 
       // ~1.5fps camera frame capture; only starts once video is playing.

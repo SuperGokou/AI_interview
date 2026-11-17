@@ -100,7 +100,10 @@ def get_settings() -> Settings:
             "PROCTOR_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"
         ),
         # 可填多个,逗号分隔,按顺序尝试:不同账号/地域开通的模型不同。
-        proctor_model=os.getenv("PROCTOR_MODEL", "qwen3.8-flash,qwen3-vl-plus,qwen-vl-plus"),
+        # 名字里带 omni 的模型还会听一段环境声(键盘声、旁人说话);其余只看画面。
+        proctor_model=os.getenv(
+            "PROCTOR_MODEL", "qwen3.8-omni-flash,qwen3.8-flash,qwen3-vl-plus,qwen-vl-plus"
+        ),
         # 0 关闭画面监考。
         proctor_interval_s=_bounded_int("PROCTOR_INTERVAL_S", 8, 0, 600),
         # 默认复用百炼的 key;也可指向自建的开源向量模型服务(如 bge-m3)。

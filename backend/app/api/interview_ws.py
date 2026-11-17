@@ -26,6 +26,7 @@ from app.core.integrity import interpret_visual_observation
 from app.core.integrity_analysis import analyze_integrity
 from app.core.mouth_stream import MouthStream
 from app.core.proctor import ProctorMonitor, ProctorUnavailable, VisionProctor
+from app.core.proctor_audio import AudioWindow, pcm_to_wav, worth_hearing
 from app.core.interview_bridge import InterviewBridge
 from app.core.report_store import build_report
 from app.core.scoring import ReportGenerator
@@ -104,7 +105,15 @@ _OVERTIME_GRACE_S = 5 * 60
 # 单帧上行大小上限(base64 字符数);超限帧直接丢弃。
 _MAX_AUDIO_B64 = 512 * 1024
 _MAX_IMAGE_B64 = 3 * 1024 * 1024
-_MAX_FRAME_B64 = {"audio": _MAX_AUDIO_B64, "image": _MAX_IMAGE_B64}
+# proctor_audio: 另一路不降噪的麦克风,只给监考听,不送给面试官。
+_MAX_FRAME_B64 = {
+    "audio": _MAX_AUDIO_B64,
+    "proctor_audio": _MAX_AUDIO_B64,
+    "image": _MAX_IMAGE_B64,
+}
+
+# 面试官刚说过话的这段时间内,录音里可能有它从扬声器传出的声音。
+_INTERVIEWER_ECHO_NOTE = "这段时间面试官(AI)正在说话,录音里它的声音不算其他人。"
 
 _FINISHED_STATUSES = ("done", "completed")
 
@@ -159,12 +168,22 @@ def _detect_ai_text(bind, session_id: int, detector, text: str) -> str | None:
         return integrity_level(worker_db, session_id)
 
 
-def _proctor_frame(bind, session_id: int, proctor, monitor: ProctorMonitor, jpeg: bytes, now: float):
-    """Worker-thread job: look at one camera frame and persist confirmed findings.
+def _proctor_frame(
+    bind,
+    session_id: int,
+    proctor,
+    monitor: ProctorMonitor,
+    jpeg: bytes,
+    now: float,
+    wav: bytes | None = None,
+    note: str = "",
+):
+    """Worker-thread job: look at one camera frame (and listen to the last few
+    seconds around the candidate) and persist confirmed findings.
 
     Returns the new integrity level when something was recorded, else None.
     """
-    observation = proctor.check(jpeg)
+    observation = proctor.check(jpeg, wav, note=note) if wav else proctor.check(jpeg)
     confirmed = monitor.update(observation["flags"], now)
     signals = interpret_visual_observation({"flags": confirmed, "detail": observation["detail"]})
     if not signals:
@@ -334,6 +353,7 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                 if kind == "audio":
                     pcm = event["data"]
                     timer.on_interviewer_audio(len(pcm), clock())
+                    interviewer["spoke_at"] = clock()
                     await ws.send_json(
                         {
                             "type": "audio",
@@ -397,6 +417,18 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
 
     proctor = proctor_factory()
     camera = {"frame": None, "seen": None}
+    # Sound for proctoring: the browser's unprocessed microphone when it sends one,
+    # otherwise the (noise-suppressed) audio the interviewer hears.
+    room_audio = {"raw": AudioWindow(), "mic": AudioWindow(), "has_raw": False}
+    interviewer = {"spoke_at": float("-inf")}
+
+    def recent_sound() -> tuple[bytes | None, str]:
+        raw, mic = room_audio["raw"].take(), room_audio["mic"].take()
+        pcm = raw if room_audio["has_raw"] else mic
+        if not worth_hearing(pcm):
+            return None, ""
+        spoke_recently = clock() - interviewer["spoke_at"] <= (settings.proctor_interval_s or 20)
+        return pcm_to_wav(pcm), _INTERVIEWER_ECHO_NOTE if spoke_recently else ""
 
     async def proctor_loop():
         """Every few seconds, have the vision model look at the newest camera frame."""
@@ -407,9 +439,10 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
             if frame is None or frame is camera["seen"]:
                 continue  # camera off or no new picture since the last look
             camera["seen"] = frame
+            wav, note = recent_sound()
             try:
                 level = await run_in_threadpool(
-                    _proctor_frame, bind, session_id, proctor, monitor, frame, clock()
+                    _proctor_frame, bind, session_id, proctor, monitor, frame, clock(), wav, note
                 )
                 if level is not None:
                     await ws.send_json({"type": "integrity", "level": level})
@@ -433,7 +466,11 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                     continue
                 msg_type, payload = frame
                 if msg_type == "audio":
+                    room_audio["mic"].append(payload)
                     await bridge.send_audio(payload)
+                elif msg_type == "proctor_audio":
+                    room_audio["has_raw"] = True
+                    room_audio["raw"].append(payload)
                 else:
                     camera["frame"] = payload
                     await bridge.send_image(payload)
