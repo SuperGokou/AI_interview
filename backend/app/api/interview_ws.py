@@ -86,7 +86,14 @@ async def _default_mouth_stream():
 mouth_stream_factory = _default_mouth_stream
 
 # 回答 AI 味置信度阈值,超过才记一次作弊事件。
-_AI_TEXT_THRESHOLD = 0.6
+# 仅凭文字判断照读 AI 稿并不可靠(语音识别后的口头回答本来就通顺),所以门槛定得高,
+# 单次命中只算弱信号:要多次命中,或与其他信号叠加,才会把诚信等级拉低。
+_AI_TEXT_THRESHOLD = 0.8
+_AI_TEXT_STRONG = 0.9
+
+
+def _ai_text_severity(confidence: float) -> str:
+    return "medium" if confidence >= _AI_TEXT_STRONG else "low"
 
 # 首帧后延迟一会儿再让面试官主动开场,给几帧缓冲时间。
 _OPENER_DELAY_S = 2.0
@@ -141,11 +148,12 @@ def _detect_ai_text(bind, session_id: int, detector, text: str) -> str | None:
     Returns the new integrity level when an event was recorded, else None.
     """
     verdict = detector.detect(text)
-    if not verdict.get("is_ai_like") or verdict.get("confidence", 0.0) < _AI_TEXT_THRESHOLD:
+    confidence = float(verdict.get("confidence", 0.0))
+    if not verdict.get("is_ai_like") or confidence < _AI_TEXT_THRESHOLD:
         return None
     with Session(bind=bind) as worker_db:
         record_cheat_event(
-            worker_db, session_id, kind="ai_text", severity="high",
+            worker_db, session_id, kind="ai_text", severity=_ai_text_severity(confidence),
             evidence=verdict.get("reason", ""),
         )
         return integrity_level(worker_db, session_id)
