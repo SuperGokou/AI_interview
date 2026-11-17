@@ -272,3 +272,11 @@ def test_a_phone_is_reported_even_right_after_another_object():
     assert monitor.update(["phone", "suspicious_object"], 35) == ["phone"]
     proctor = VisionProctor(_Vision({"flags": ["phone"], "detail": "手里拿着手机"}))
     assert proctor.check(b"x")["flags"] == ["phone"]
+
+
+def test_a_second_voice_is_not_trusted_while_the_interviewer_is_talking():
+    from app.api.interview_ws import _without_echo
+
+    flags = ["keyboard_typing", "other_voice"]
+    assert _without_echo(flags, interviewer_spoke=True) == ["keyboard_typing"]
+    assert _without_echo(flags, interviewer_spoke=False) == flags

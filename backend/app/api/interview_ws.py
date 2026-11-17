@@ -28,6 +28,15 @@ from app.core.mouth_stream import MouthStream
 from app.core.proctor import ProctorMonitor, ProctorUnavailable, VisionProctor
 from app.core.proctor_audio import AudioWindow, pcm_to_wav, worth_hearing
 from app.core.silence import SilenceWatch, nudge_text
+from app.core.violations import (
+    END,
+    FAREWELL_SECONDS,
+    TERMINATION_KIND,
+    ViolationPolicy,
+    end_notice,
+    ending_text,
+    warning_text,
+)
 from app.core.interview_bridge import InterviewBridge
 from app.core.report_store import build_report
 from app.core.scoring import ReportGenerator
@@ -169,6 +178,14 @@ def _detect_ai_text(bind, session_id: int, detector, text: str) -> str | None:
         return integrity_level(worker_db, session_id)
 
 
+def _without_echo(flags: list[str], *, interviewer_spoke: bool) -> list[str]:
+    """While the interviewer is talking its voice comes out of the candidate's
+    speakers, and the model cannot reliably tell that from a person in the room
+    (seen in a real interview). A second voice is only trusted in a clip the
+    interviewer was silent in."""
+    return [f for f in flags if not (interviewer_spoke and f == "other_voice")]
+
+
 def _proctor_frame(
     bind,
     session_id: int,
@@ -182,10 +199,10 @@ def _proctor_frame(
     """Worker-thread job: look at one camera frame (and listen to the last few
     seconds around the candidate) and persist confirmed findings.
 
-    Returns the new integrity level when something was recorded, else None.
+    Returns (new integrity level, kinds recorded) when something was recorded, else None.
     """
     observation = proctor.check(jpeg, wav, note=note) if wav else proctor.check(jpeg)
-    confirmed = monitor.update(observation["flags"], now)
+    confirmed = monitor.update(_without_echo(observation["flags"], interviewer_spoke=bool(note)), now)
     signals = interpret_visual_observation({"flags": confirmed, "detail": observation["detail"]})
     if not signals:
         return None
@@ -195,7 +212,15 @@ def _proctor_frame(
                 worker_db, session_id, kind=signal.kind, severity=signal.severity,
                 evidence=signal.evidence,
             )
-        return integrity_level(worker_db, session_id)
+        return integrity_level(worker_db, session_id), [signal.kind for signal in signals]
+
+
+def _record_termination(bind, session_id: int, warnings: int) -> None:
+    with Session(bind=bind) as worker_db:
+        record_cheat_event(
+            worker_db, session_id, kind=TERMINATION_KIND, severity="high",
+            evidence=f"提醒 {warnings} 次后仍检测到键盘敲击声,面试被系统终止。",
+        )
 
 
 def _generate_report(bind, session_id: int) -> None:
@@ -437,9 +462,18 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
         spoke_recently = clock() - interviewer["spoke_at"] <= (settings.proctor_interval_s or 20)
         return pcm_to_wav(pcm), _INTERVIEWER_ECHO_NOTE if spoke_recently else ""
 
+    async def end_for_violations(warnings: int):
+        """Say why, give the interviewer time to finish the sentence, then hang up."""
+        await run_in_threadpool(_record_termination, bind, session_id, warnings)
+        await bridge.trigger_response(ending_text(job.language))
+        await asyncio.sleep(FAREWELL_SECONDS)
+        await ws.send_json({"type": "error", "message": end_notice(job.language)})
+        await ws.close()
+
     async def proctor_loop():
         """Every few seconds, have the vision model look at the newest camera frame."""
         monitor = ProctorMonitor()
+        policy = ViolationPolicy(limit=settings.typing_warning_limit)
         while True:
             await asyncio.sleep(settings.proctor_interval_s or 20)
             frame = camera["frame"]
@@ -448,11 +482,21 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
             camera["seen"] = frame
             wav, note = recent_sound()
             try:
-                level = await run_in_threadpool(
+                found = await run_in_threadpool(
                     _proctor_frame, bind, session_id, proctor, monitor, frame, clock(), wav, note
                 )
-                if level is not None:
-                    await ws.send_json({"type": "integrity", "level": level})
+                if found is None:
+                    continue
+                level, kinds = found
+                await ws.send_json({"type": "integrity", "level": level})
+                action = policy.record(kinds)
+                if action == END:
+                    await end_for_violations(policy.limit)
+                    return
+                if action is not None:
+                    await bridge.trigger_response(
+                        warning_text(policy.count, policy.limit, job.language)
+                    )
             except asyncio.CancelledError:
                 raise
             except ProctorUnavailable as exc:

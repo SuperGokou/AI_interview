@@ -48,6 +48,7 @@ class Settings:
     proctor_model: str
     proctor_interval_s: int
     silence_nudge_s: int
+    typing_warning_limit: int
     # 文本向量(AI 答案相似度);OpenAI 兼容接口
     embedding_api_key: str
     embedding_base_url: str
@@ -109,6 +110,8 @@ def get_settings() -> Settings:
         proctor_interval_s=_bounded_int("PROCTOR_INTERVAL_S", 8, 0, 600),
         # 候选人沉默这么久后面试官主动询问;0 关闭(一直等候选人开口)。
         silence_nudge_s=_bounded_int("SILENCE_NUDGE_S", 20, 0, 300),
+        # 键盘敲击声当场提醒的次数;提醒满之后再出现一次就结束面试。0 = 只记录,不提醒也不结束。
+        typing_warning_limit=_bounded_int("TYPING_WARNING_LIMIT", 3, 0, 20),
         # 默认复用百炼的 key;也可指向自建的开源向量模型服务(如 bge-m3)。
         embedding_api_key=os.getenv("EMBEDDING_API_KEY") or dashscope_key,
         embedding_base_url=os.getenv(

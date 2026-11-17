@@ -45,6 +45,7 @@ const EVENT_LABEL: Record<string, string> = {
   multi_person: '画面中出现多人',
   person_absent: '候选人离开画面',
   phone: '画面中出现手机',
+  repeated_violation: '多次违规,面试被终止',
   suspicious_object: '画面中有可疑物品',
   keyboard_typing: '听到持续的键盘敲击声',
   other_voice: '听到其他人说话',
