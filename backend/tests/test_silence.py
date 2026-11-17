@@ -150,3 +150,32 @@ def test_a_missing_end_of_speech_does_not_block_the_interviewer_for_ever():
     assert watch.due(50) is None
     assert watch.due(61) is None  # counted as quiet only from here on
     assert watch.due(82) == CHECK_IN
+
+
+def test_check_in_asks_a_question_instead_of_a_stock_phrase():
+    text = nudge_text(CHECK_IN)
+    assert "必须是一个问句" in text and "不要说『不着急』" in text
+
+
+def test_playbook_forbids_empty_fillers():
+    from app.prompts.interviewer import build_interviewer_instructions
+
+    zh = build_interviewer_instructions(job_title="后端", jd="x", questions=[])
+    assert "每次发言都必须包含一个具体的问题" in zh
+    assert "只说『请继续』或『不着急,慢慢说』" not in zh
+    en = build_interviewer_instructions(job_title="x", jd="x", questions=[], language="en")
+    assert "Never reply with only a filler" in en
+
+
+def test_trace_writes_one_line_per_event_and_never_raises(tmp_path):
+    import json
+
+    from app.core.interview_trace import InterviewTrace
+
+    trace = InterviewTrace(7, directory=tmp_path, active=True)
+    trace("candidate_said", text="你好")
+    trace("silence_prompt", stage="check_in")
+    lines = (tmp_path / "interview-7.log").read_text(encoding="utf-8").splitlines()
+    assert [json.loads(line)["what"] for line in lines] == ["candidate_said", "silence_prompt"]
+    InterviewTrace(8, directory=tmp_path / "missing" / "x", active=False)("ignored")
+    assert not (tmp_path / "missing").exists()

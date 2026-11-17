@@ -39,6 +39,7 @@ from app.core.violations import (
     reminder_text,
     warning_text,
 )
+from app.core.interview_trace import InterviewTrace
 from app.core.interview_bridge import InterviewBridge
 from app.core.report_store import build_report
 from app.core.scoring import ReportGenerator
@@ -344,6 +345,7 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
     # The page holds audio back a little (lip-sync), so it finishes later than sent.
     playback_margin_s = settings.mouth_playback_delay_ms / 1000 + 0.3
     reply = {"generating": False, "dropping": False}
+    trace = InterviewTrace(session_id)
     barge: dict = {"task": None}
     clock = asyncio.get_running_loop().time
 
@@ -432,9 +434,11 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                 turn["samples"] = 0
         silence.cut_short(now)
         logger.info("interview %s: interviewer cut off mid-reply", session_id)
+        trace("interviewer_cut_off", was_generating=reply["dropping"])
         await ws.send_json({"type": "interrupt"})
 
     async def say_now(text: str):
+        trace("interviewer_told_to_speak_now", prompt=text[:60])
         """Have the interviewer say something right away rather than after the
         sentence it is in the middle of: a warning that comes 15 s late is useless."""
         await stop_speaking()
@@ -448,6 +452,8 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                 if kind == "audio":
                     if reply["dropping"]:
                         continue  # the rest of a reply the candidate talked over
+                    if not reply["generating"]:
+                        trace("interviewer_audio_starts")
                     reply["generating"] = True
                     pcm = event["data"]
                     timer.on_interviewer_audio(len(pcm), clock())
@@ -466,6 +472,7 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                     if mouth is not None and mouth.alive:
                         await mouth.send_audio(pcm)
                 elif kind == "response_done":
+                    trace("response_done", dropped=reply["dropping"])
                     reply["generating"] = reply["dropping"] = False
                     if turn["samples"]:
                         turn["utterance"] += 1
@@ -475,10 +482,12 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                 elif kind == "transcript_delta":
                     await ws.send_json({"type": "transcript_delta", "text": event["text"]})
                 elif kind == "transcript":
+                    trace("interviewer_said", text=event["text"])
                     _persist("interviewer", event["text"])
                     await ws.send_json({"type": "transcript", "text": event["text"]})
                 elif kind == "user_transcript":
                     text = event["text"]
+                    trace("candidate_said", text=text)
                     _persist(
                         "candidate", text, latency_ms=timer.on_candidate_transcript().latency_ms
                     )
@@ -486,6 +495,12 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                     await ws.send_json({"type": "user_transcript", "text": text})
                     _spawn(check_ai_text(text))
                 elif kind == "speech_started":
+                    trace(
+                        "candidate_speech_started",
+                        interviewer_audible=silence.interviewer_speaking(
+                            clock(), margin=playback_margin_s
+                        ),
+                    )
                     timer.on_candidate_speech_started(clock())
                     silence.candidate_started(clock())
                     if (
@@ -495,6 +510,7 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                     ):
                         barge["task"] = _spawn(barge_in())
                 elif kind == "speech_stopped":
+                    trace("candidate_speech_stopped")
                     silence.candidate_stopped(clock())
                     if barge["task"] is not None:
                         barge["task"].cancel()  # a cough or a word, not an interruption
@@ -592,6 +608,7 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                 if found is None:
                     continue
                 level, kinds = found
+                trace("proctor_found", kinds=kinds)
                 await ws.send_json({"type": "integrity", "level": level})
                 action = policy.record(kinds)
                 if action == END:
@@ -619,6 +636,7 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
             if stage is None:
                 continue
             logger.info("interview %s: breaking the silence (%s)", session_id, stage)
+            trace("silence_prompt", stage=stage)
             try:
                 await bridge.trigger_response(
                     nudge_text(stage, job.language, repeated=repeated)
