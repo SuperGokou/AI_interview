@@ -1,0 +1,24 @@
+[Unit]
+Description=Kunyao private streaming lip-sync renderer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/kunyao-musetalk/MuseTalk
+# service.env (mode 600) holds GPU_API_KEY; optional MAX_SESSIONS and PORT.
+EnvironmentFile=/opt/kunyao-musetalk/service.env
+Environment=HF_HUB_OFFLINE=1
+Environment=TRANSFORMERS_OFFLINE=1
+Environment=PYTHONUNBUFFERED=1
+Environment=NUMBA_CACHE_DIR=/opt/kunyao-musetalk/cache/numba
+ExecStart=/opt/kunyao-musetalk/venv/bin/python stream_service.py
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

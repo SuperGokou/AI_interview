@@ -20,7 +20,7 @@ import torch
 from transformers import WhisperModel
 from musetalk.utils.utils import load_all_model, datagen
 from musetalk.utils.audio_processor import AudioProcessor
-from continuous_mouth import speech_envelope
+from speech_gate import gate_levels
 from identity_mouth import OriginalLips
 from lower_face import LowerFace
 
@@ -101,7 +101,7 @@ class PortraitRenderer:
     def _speech_gate(audio,count):
         """Per-frame 0..1 level: 1 while someone is speaking, easing to 0 in pauses."""
         samples,rate=soundfile.read(str(audio),dtype='float32',always_2d=True)
-        return speech_envelope(samples.mean(axis=1),rate,FPS,count)
+        return gate_levels(samples.mean(axis=1),rate,FPS,count)
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser()

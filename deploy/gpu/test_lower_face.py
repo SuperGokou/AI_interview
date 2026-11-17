@@ -26,12 +26,22 @@ class LowerFaceTests(unittest.TestCase):
         frame = portrait()
         result = LowerFace(frame, BOX).apply(self.mouth_patch(), speech=1)
         x1, y1, x2, y2 = BOX
-        nose_line = y1 + int((y2 - y1) * 0.50)
+        nose_line = y1 + int((y2 - y1) * 0.50)  # model only regenerates below this
         np.testing.assert_array_equal(result[:nose_line], frame[:nose_line])  # eyes, nose, hair
         np.testing.assert_array_equal(result[y2:], frame[y2:])  # neck and clothes
         np.testing.assert_array_equal(result[:, :x1], frame[:, :x1])
         np.testing.assert_array_equal(result[:, x2:], frame[:, x2:])
         self.assertTrue((result != frame).any())
+
+    def test_region_matches_the_full_frame_blend(self):
+        frame = portrait()
+        compositor = LowerFace(frame, BOX)
+        x1, y1, x2, y2 = BOX
+        for speech in (0, 0.5, 1):
+            full = compositor.apply(self.mouth_patch(), speech)
+            np.testing.assert_array_equal(
+                compositor.apply_region(self.mouth_patch(), speech), full[y1:y2, x1:x2]
+            )
 
     def test_mask_edge_is_seamless(self):
         compositor = LowerFace(portrait(), BOX)
