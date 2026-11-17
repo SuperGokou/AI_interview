@@ -178,10 +178,10 @@ class ServiceTests(unittest.TestCase):
         with client.websocket_connect("/stream", headers=self.auth) as ws:
             ws.receive_text()
             ws.send_bytes(pcm(0.5))
-            with self.assertRaises(WebSocketDisconnect) as ctx:
-                ws.receive()
-                ws.receive()
-            self.assertEqual(ctx.exception.code, 1011)
+            closed = ws.receive()
+            self.assertEqual(closed["type"], "websocket.close")
+            self.assertEqual(closed["code"], 1011)
+        self.assertEqual(client.get("/health").json()["sessions"], 0)
 
     def test_refuses_sessions_beyond_capacity(self):
         with self.client.websocket_connect("/stream", headers=self.auth) as first:

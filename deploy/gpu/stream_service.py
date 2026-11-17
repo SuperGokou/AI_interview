@@ -71,17 +71,7 @@ async def _serve(ws: WebSocket, engine, rate: int) -> None:
     wake = asyncio.Event()
 
     async def render_loop():
-        try:
-            await _render_until_closed()
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            # Never leave the caller waiting on frames that will not come.
-            logger.exception("render loop failed; closing the session")
-            await ws.close(code=1011)
-
-    async def _render_until_closed():
-        while not state["closed"]:
+        while True:
             await wake.wait()
             wake.clear()
             while True:
@@ -100,12 +90,11 @@ async def _serve(ws: WebSocket, engine, rate: int) -> None:
                     {"type": "done", "utterance": utterance, "frames": buffer.rendered}))
                 _next_utterance(state, rate)
 
-    task = asyncio.create_task(render_loop())
-    try:
+    async def receive_loop():
         while True:
             message = await ws.receive()
             if message["type"] == "websocket.disconnect":
-                break
+                return
             data = message.get("bytes")
             if data is not None:
                 if len(data) > MAX_CHUNK_BYTES:
@@ -124,14 +113,25 @@ async def _serve(ws: WebSocket, engine, rate: int) -> None:
                 wake.set()
             elif kind == "reset":
                 _next_utterance(state, rate)
+
+    # Whichever side stops first ends the session: the peer leaving, or a render
+    # failure. A failed renderer must never leave the caller waiting for frames.
+    renderer = asyncio.create_task(render_loop())
+    receiver = asyncio.create_task(receive_loop())
+    try:
+        await asyncio.wait({renderer, receiver}, return_when=asyncio.FIRST_COMPLETED)
     finally:
         state["closed"] = True
-        wake.set()
-        task.cancel()
-        try:
-            await task
-        except (asyncio.CancelledError, Exception):
-            pass
+        for task in (renderer, receiver):
+            task.cancel()
+        results = await asyncio.gather(renderer, receiver, return_exceptions=True)
+    failure = next(
+        (r for r in results if isinstance(r, Exception) and not isinstance(r, WebSocketDisconnect)),
+        None,
+    )
+    if failure is not None:
+        logger.error("stream session failed", exc_info=failure)
+        await ws.close(code=1011)
 
 
 async def _drain(state, wake: asyncio.Event) -> None:
