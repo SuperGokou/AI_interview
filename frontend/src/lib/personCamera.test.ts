@@ -42,3 +42,20 @@ it('treats an ended track as an error even if the browser emits no ended event',
  expect(sample).toHaveBeenCalledWith(null);expect(sample).not.toHaveBeenCalledWith(false);
  expect(status).toHaveBeenLastCalledWith(expect.stringContaining('断开'),true);
 });
+it('explains what it is waiting for when the camera does not open',async()=>{
+ vi.mocked(navigator.mediaDevices.getUserMedia).mockImplementation(()=>new Promise(()=>{}));
+ Object.defineProperty(navigator,'permissions',{configurable:true,value:{query:vi.fn().mockResolvedValue({state:'prompt'})}});
+ const status=vi.fn();const stop=startPersonCamera(vi.fn(),status);
+ await vi.advanceTimersByTimeAsync(3900);expect(status).toHaveBeenCalledTimes(1);
+ await vi.advanceTimersByTimeAsync(200);
+ expect(status).toHaveBeenLastCalledWith(expect.stringContaining('点“允许”'),false);
+ vi.mocked(navigator.permissions.query).mockResolvedValue({state:'granted'} as PermissionStatus);
+ stop();
+ const second=vi.fn();const stopSecond=startPersonCamera(vi.fn(),second);await vi.advanceTimersByTimeAsync(4100);
+ expect(second).toHaveBeenLastCalledWith(expect.stringContaining('其他程序'),false);stopSecond();
+});
+it('says nothing extra when the camera opens promptly',async()=>{
+ const status=vi.fn();startPersonCamera(vi.fn(),status);await vi.advanceTimersByTimeAsync(0);
+ const calls=status.mock.calls.length;await vi.advanceTimersByTimeAsync(5000);
+ expect(status.mock.calls.slice(calls).every(([message])=>!String(message).includes('等待'))).toBe(true);
+});
