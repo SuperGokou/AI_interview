@@ -136,7 +136,7 @@ def generate_job_questions(job_id: int, body: GenerateIn, db: Session = Depends(
     job = _get_job_or_404(job_id, db)
     client = generator_client_factory()
     if client is None:
-        raise HTTPException(status_code=503, detail="未配置 DEEPSEEK_API_KEY，无法生成题目。")
+        raise HTTPException(status_code=503, detail="评估模型尚未配置，无法生成题目。")
     existing = [q.prompt for q in db.query(models.Question).filter_by(job_id=job_id)]
     try:
         drafts = generate_questions(

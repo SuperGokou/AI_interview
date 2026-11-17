@@ -498,7 +498,7 @@ export function useInterviewSession(
         throw e;
       });
 
-      // Mic capture context (16kHz, which Qwen-Omni expects).
+      // Mic capture context (16kHz, which the realtime model expects).
       if (hasAudioTrack) {
         const captureCtx = new AudioContext({ sampleRate: INPUT_SAMPLE_RATE });
         captureCtxRef.current = captureCtx;

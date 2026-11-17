@@ -57,8 +57,8 @@ export default function Settings() {
             okText="已连接"
             badText="未连接"
           />
-          <StatusRow label="Qwen-Omni 实时模型" ok={!!health?.models?.qwen} okText="已配置" />
-          <StatusRow label="DeepSeek 评分模型" ok={!!health?.models?.deepseek} okText="已配置" />
+          <StatusRow label="KY-BOT 实时面试模型" ok={!!health?.models?.realtime} okText="已配置" />
+          <StatusRow label="KY-BOT 评估模型" ok={!!health?.models?.scoring} okText="已配置" />
         </Card>
 
         <Card className="p-6 mb-5">

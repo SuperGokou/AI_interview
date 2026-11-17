@@ -99,7 +99,7 @@ export interface ReportOut {
 export interface HealthResponse {
   status: string;
   database: string;
-  models: { qwen: boolean; deepseek: boolean };
+  models: { realtime: boolean; scoring: boolean };
 }
 
 export interface Transcript {

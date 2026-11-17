@@ -29,8 +29,10 @@ def health(db: Session = Depends(get_db)):
         "status": "ok" if db_ok else "degraded",
         "database": "up" if db_ok else "down",
         "models": {
-            "qwen": bool(settings.dashscope_api_key),
-            "deepseek": bool(settings.deepseek_api_key),
+            # Neutral names: this endpoint is public, and the product presents its
+            # models as KY-BOT rather than naming the providers behind it.
+            "realtime": bool(settings.dashscope_api_key),
+            "scoring": bool(settings.deepseek_api_key),
         },
     }
     return JSONResponse(body, status_code=200 if db_ok else 503)
