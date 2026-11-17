@@ -179,3 +179,16 @@ def test_trace_writes_one_line_per_event_and_never_raises(tmp_path):
     assert [json.loads(line)["what"] for line in lines] == ["candidate_said", "silence_prompt"]
     InterviewTrace(8, directory=tmp_path / "missing" / "x", active=False)("ignored")
     assert not (tmp_path / "missing").exists()
+
+
+def test_candidate_speaking_does_not_make_the_interviewer_look_audible():
+    """From an interview trace: every candidate utterance was followed 0.7 s later
+    by 'interviewer cut off', although the interviewer had been silent for seconds."""
+    watch = SilenceWatch()
+    watch.interviewer_audio(5, now=0)
+    watch.candidate_started(now=20)
+    assert not watch.interviewer_speaking(20.7, margin=1.7)
+    assert not watch.audible_since(20)
+    watch.interviewer_audio(10, now=30)
+    watch.candidate_started(now=33)  # this one really is over the interviewer
+    assert watch.interviewer_speaking(33.7, margin=1.7)

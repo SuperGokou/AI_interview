@@ -88,6 +88,10 @@ class SilenceWatch:
 
     def __post_init__(self) -> None:
         self._quiet_since: float | None = None  # None until the interviewer has spoken
+        # When the interviewer's own audio stops playing. Kept apart from
+        # _quiet_since, which the candidate's activity also moves: mixing the two
+        # made every candidate utterance look like talking over the interviewer.
+        self._speech_ends: float | None = None
         self._checked_in = False
         self._skipped = 0
         self._paused = False
@@ -100,19 +104,22 @@ class SilenceWatch:
 
     def interviewer_audio(self, seconds: float, now: float) -> None:
         """The interviewer produced audio that will play for `seconds`."""
-        start = max(self._quiet_since or now, now)
-        self._quiet_since = start + seconds
+        start = max(self._speech_ends or now, now)
+        self._speech_ends = start + seconds
+        self._quiet_since = max(self._quiet_since or now, self._speech_ends)
 
     def interviewer_speaking(self, now: float, *, margin: float = 0.0) -> bool:
         """Whether audio already sent to the page is still playing there."""
-        return self._quiet_since is not None and self._quiet_since + margin > now
+        return self._speech_ends is not None and self._speech_ends + margin > now
 
     def audible_since(self, since: float, *, margin: float = 0.0) -> bool:
         """Whether the interviewer could be heard at any point from `since` on."""
-        return self._quiet_since is not None and self._quiet_since + margin > since
+        return self._speech_ends is not None and self._speech_ends + margin > since
 
     def cut_short(self, now: float) -> None:
         """Playback was stopped early (the candidate talked over the interviewer)."""
+        if self._speech_ends is not None:
+            self._speech_ends = min(self._speech_ends, now)
         if self._quiet_since is not None:
             self._quiet_since = min(self._quiet_since, now)
 
