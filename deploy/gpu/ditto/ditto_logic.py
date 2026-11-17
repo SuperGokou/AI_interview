@@ -17,9 +17,15 @@ CHUNKSIZE = (3, 5, 2)
 LEAD_IN = CHUNKSIZE[0] * SAMPLES_PER_FRAME  # zeros fed before the first window
 STEP = CHUNKSIZE[1] * SAMPLES_PER_FRAME  # 3200 samples = 0.2 s
 WINDOW = sum(CHUNKSIZE) * SAMPLES_PER_FRAME + 80  # 6480 samples
-# Silence appended when an utterance ends, long enough for the speech gate to ease
-# the face fully back to the portrait before the overlay hands over to the still image.
-TAIL_SECONDS = 1.2
+# Silence appended when an utterance ends, while the face eases back to the portrait
+# so the overlay can hand over to the still image without a jump.
+TAIL_SECONDS = 0.5
+# After the audio has ended the face returns this fast (per frame), without the
+# hold used for pauses inside a reply: the next reply must not wait behind it.
+END_FALL_PER_FRAME = 0.12
+# Rendering runs only slightly faster than playback, so a reply that falls behind
+# cannot catch up by itself. Beyond this lag every other frame is skipped until it has.
+CATCH_UP_LAG_S = 0.25
 MAX_UTTERANCE_SECONDS = 120
 
 
@@ -90,6 +96,31 @@ class AudioWindows:
     def known_frames(self) -> int:
         """Frames whose audio (plus one frame of lookahead) is already known."""
         return max(0, len(self._model) // SAMPLES_PER_FRAME - 1)
+
+
+class Pacer:
+    """Decides which frames to skip so a late reply catches up with its audio.
+
+    Frame i is on time when it is rendered `budget` seconds after its audio
+    position; `budget` is measured from the first frame, which absorbs the
+    constant start-up latency.
+    """
+
+    def __init__(self, lag_limit: float = CATCH_UP_LAG_S):
+        self.lag_limit = lag_limit
+        self._origin: float | None = None
+        self._skipped_last = False
+        self.skipped = 0
+
+    def should_skip(self, index: int, now: float) -> bool:
+        if self._origin is None:
+            self._origin = now - index / FPS
+            return False
+        lag = now - (self._origin + index / FPS)
+        skip = lag > self.lag_limit and not self._skipped_last  # never two in a row
+        self._skipped_last = skip
+        self.skipped += skip
+        return skip
 
 
 def patch_rect(mask_bbox, frame_size, margin=4):

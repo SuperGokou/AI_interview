@@ -135,6 +135,10 @@ class _Session:
                 if not data or len(data) > MAX_CHUNK_BYTES:
                     continue
                 if not self.open:
+                    # The previous reply may still be rendering its closing frames;
+                    # the new one must not queue behind them.
+                    if hasattr(self.engine, "preempt"):
+                        self.engine.preempt()
                     self._begin()
                 self._call(self.engine.feed, data)
             else:

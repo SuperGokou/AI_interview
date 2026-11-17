@@ -18,7 +18,9 @@ import numpy as np
 import torch
 
 import core.atomic_components.writer as writer_module
-from ditto_logic import CHUNKSIZE, FPS, AudioWindows, patch_rect
+import queue
+
+from ditto_logic import CHUNKSIZE, END_FALL_PER_FRAME, FPS, AudioWindows, Pacer, patch_rect
 from speech_gate import SpeechGate, frame_is_active
 from stream_pipeline_online import StreamSDK
 
@@ -52,13 +54,73 @@ class _FrameSink:
         pass
 
 
+class _PacedSDK(StreamSDK):
+    """StreamSDK whose render stages skip frames when a reply has fallen behind.
+
+    Warping and decoding are the expensive per-frame steps. A skipped frame goes
+    through as a marker so the frame numbering the browser relies on stays intact.
+    """
+
+    pacer: Pacer | None = None
+    on_skip = None
+
+    def _warp_f3d_worker(self):
+        produced = 0
+        while not self.stop_event.is_set():
+            try:
+                item = self.warp_f3d_queue.get(timeout=1)
+            except queue.Empty:
+                continue
+            if item is None:
+                self.decode_f3d_queue.put(None)
+                break
+            frame_idx, x_s, x_d = item
+            if self.pacer is not None and self.pacer.should_skip(produced, time.monotonic()):
+                self.decode_f3d_queue.put([frame_idx, None])
+            else:
+                f_s = self.source_info["f_s_lst"][frame_idx]
+                self.decode_f3d_queue.put([frame_idx, self.warp_f3d(f_s, x_s, x_d)])
+            produced += 1
+
+    def _decode_f3d_worker(self):
+        while not self.stop_event.is_set():
+            try:
+                item = self.decode_f3d_queue.get(timeout=1)
+            except queue.Empty:
+                continue
+            if item is None:
+                self.putback_queue.put(None)
+                break
+            frame_idx, f_3d = item
+            self.putback_queue.put([frame_idx, None if f_3d is None else self.decode_f3d(f_3d)])
+
+    def _putback_worker(self):
+        while not self.stop_event.is_set():
+            try:
+                item = self.putback_queue.get(timeout=1)
+            except queue.Empty:
+                continue
+            if item is None:
+                self.writer_queue.put(None)
+                break
+            frame_idx, render_img = item
+            if render_img is None:
+                if self.on_skip is not None:
+                    self.on_skip()
+                continue
+            frame_rgb = self.source_info["img_rgb_lst"][frame_idx]
+            M_c2o = self.source_info["M_c2o_lst"][frame_idx]
+            self.writer_queue.put(self.putback(frame_rgb, render_img, M_c2o))
+
+
 class DittoEngine:
     def __init__(self, portrait=None):
         self.portrait = portrait or os.environ.get("PORTRAIT", "portrait.png")
         writer_module.VideoWriterByImageIO = _FrameSink
         import stream_pipeline_online
         stream_pipeline_online.VideoWriterByImageIO = _FrameSink
-        self.sdk = StreamSDK(CFG, DATA)
+        self.sdk = _PacedSDK(CFG, DATA)
+        self._preempt = threading.Event()
         self._cache_avatar()
         self._compile_motion_model()
         self._lock = threading.Lock()
@@ -118,6 +180,13 @@ class DittoEngine:
         self._gate, self._gated = SpeechGate(), 0
         self._ctrl: dict[int, dict] = {}
         self._index = 0
+        self._preempt.clear()
+        self.sdk.pacer = Pacer()
+
+        def skipped():
+            self._index += 1  # keep numbering in step with the audio
+
+        self.sdk.on_skip = skipped
 
         def sink(rgb):
             index = self._index
@@ -140,13 +209,28 @@ class DittoEngine:
         self._advance()
 
     def finish(self) -> None:
-        """Flush the utterance; returns after its last frame has been delivered."""
+        """Flush the utterance; returns after its last frame has been delivered,
+        or as soon as preempt() is called because the next reply has started."""
         try:
+            speech_frames = self._audio.known_frames()
             self._audio.end()
             self._advance()
-            self.sdk.close()
+            self.sdk.audio2motion_queue.put(None)
+            while any(thread.is_alive() for thread in self.sdk.thread_list):
+                # Only the closing fade may be cut short; frames that belong to
+                # speech the candidate is still hearing are always delivered.
+                if self._preempt.is_set() and self._index >= speech_frames:
+                    self.sdk.stop_event.set()
+                for thread in self.sdk.thread_list:
+                    thread.join(timeout=0.02)
+            if self.sdk.worker_exception is not None and not self._preempt.is_set():
+                raise self.sdk.worker_exception
         finally:
             self._active = False
+
+    def preempt(self) -> None:
+        """Thread-safe: cut the closing frames of the current utterance short."""
+        self._preempt.set()
 
     def abort(self) -> None:
         try:
@@ -164,8 +248,10 @@ class DittoEngine:
             active = frame_is_active(audio, i, per_frame) or frame_is_active(audio, i + 1, per_frame)
             self._ctrl[i] = {"fade_alpha": float(self._gate.step(active))}
             self._gated += 1
-        if self._audio.ended:  # trailing frames past the audio: settle to the portrait
-            for i in range(self._gated, self._gated + 60):
-                self._ctrl[i] = {"fade_alpha": float(self._gate.step(False))}
+        if self._audio.ended:  # settle to the portrait quickly, without the pause hold
+            level = self._gate.level
+            for i in range(max(0, self._gated - int(0.5 * FPS)), self._gated + 60):
+                level = max(0.0, min(level, self._ctrl.get(i, {}).get("fade_alpha", level)) - END_FALL_PER_FRAME)
+                self._ctrl[i] = {"fade_alpha": level}
         for window in self._audio.ready_windows():
             self.sdk.run_chunk(window, CHUNKSIZE)

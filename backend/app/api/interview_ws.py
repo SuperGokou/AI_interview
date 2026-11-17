@@ -256,6 +256,10 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
         try:
             async for frame in mouth.frames():
                 await ws.send_bytes(frame)
+            # The renderer went away mid-interview (restart, crash, network). Tell
+            # the page, or it would keep showing a motionless portrait while the
+            # interviewer talks instead of falling back to the audio-driven mouth.
+            await ws.send_json({"type": "mouth_off"})
         except asyncio.CancelledError:
             raise
         except Exception:

@@ -28,9 +28,10 @@ const WORKLET_URL = '/audio/pcm-worklet.js';
 const MAX_FRAME_WIDTH = 640;
 // Skip a camera frame when the socket is backed up, so audio is never queued behind video.
 const MAX_BUFFERED_BYTES = 512 * 1024;
-// A shown mouth frame stays up this long without a successor before the overlay
-// clears and the audio-driven mouth takes over again (late or missing frames).
-const MOUTH_FRAME_HOLD_S = 0.2;
+// A frame stays on screen this long after it was drawn if no successor arrives.
+// Measured from when it was shown, not from when it was due: a frame that arrives
+// late is still better than cutting to a motionless portrait mid-sentence.
+const MOUTH_FRAME_HOLD_MS = 400;
 // Frames queued further ahead than this are a sign of a stuck clock; drop them.
 const MAX_QUEUED_MOUTH_FRAMES = 400;
 
@@ -118,6 +119,7 @@ export function useInterviewSession(
   const mouthShownRef = useRef<TimedFrame<ImageBitmap> | null>(null);
   const mouthFrameRef = useRef<MouthFrame | null>(null);
   const mouthSerialRef = useRef(0);
+  const mouthShownAtRef = useRef(0);
 
   const clearMouthFrames = useCallback(() => {
     mouthQueueRef.current.forEach((frame) => frame.image.close());
@@ -148,10 +150,11 @@ export function useInterviewSession(
       mouthShownRef.current?.image.close();
       mouthShownRef.current = pick.due;
       mouthSerialRef.current += 1;
+      mouthShownAtRef.current = performance.now();
       mouthFrameRef.current = { image: pick.due.image, serial: mouthSerialRef.current };
     }
     const shown = mouthShownRef.current;
-    if (shown && now - shown.time > MOUTH_FRAME_HOLD_S) {
+    if (shown && performance.now() - mouthShownAtRef.current > MOUTH_FRAME_HOLD_MS) {
       shown.image.close();
       mouthShownRef.current = null;
       mouthFrameRef.current = null;
@@ -463,6 +466,11 @@ export function useInterviewSession(
           const config = parseMouthConfig(msg);
           mouthConfigRef.current = config;
           setMouthConfig(config);
+        } else if (msg.type === 'mouth_off') {
+          // The renderer is gone for this interview: back to the audio-driven mouth.
+          clearMouthFrames();
+          mouthConfigRef.current = null;
+          setMouthConfig(null);
         } else if (msg.type === 'integrity' && typeof msg.level === 'string') {
           const lvl = msg.level as IntegrityLevel;
           if (lvl === 'green' || lvl === 'yellow' || lvl === 'red') {

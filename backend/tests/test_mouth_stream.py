@@ -200,6 +200,22 @@ def test_interview_continues_when_the_lip_sync_stream_dies(wired):
     assert mouth.audio == []
 
 
+def test_page_is_told_when_the_renderer_goes_away(wired):
+    class _Dying(_Mouth):
+        async def frames(self):
+            yield frame(0, 0)
+            self.alive = False  # the service restarted
+
+    events = [{"kind": "audio", "data": b"\x00\x00" * 10}]
+    with wired(_Dying(), events, token="tok-mouth-gone") as ws:
+        assert ws.receive_json()["type"] == "mouth_config"
+        seen = []
+        while "mouth_off" not in seen:
+            message = ws.receive()
+            seen.append("frame" if message.get("bytes") else json.loads(message["text"])["type"])
+    assert seen.index("frame") < seen.index("mouth_off")
+
+
 def test_without_a_lip_sync_service_audio_is_still_tagged(client, db_session, monkeypatch):
     _seed(db_session, "tok-no-mouth")
     _Bridge.events_to_emit = [{"kind": "audio", "data": b"\x00\x00" * 10}]

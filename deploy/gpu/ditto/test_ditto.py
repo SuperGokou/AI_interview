@@ -8,7 +8,7 @@ import numpy as np
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from ditto_logic import LEAD_IN, STEP, TAIL_SECONDS, WINDOW, AudioWindows, patch_rect
+from ditto_logic import FPS, LEAD_IN, STEP, TAIL_SECONDS, WINDOW, AudioWindows, Pacer, patch_rect
 from ditto_service import create_app
 
 
@@ -54,6 +54,26 @@ class AudioWindowTests(unittest.TestCase):
         self.assertEqual(patch_rect((0, 0, 1672, 940), (1672, 940)), (0, 0, 1672, 940))
 
 
+class PacerTests(unittest.TestCase):
+    def test_on_time_reply_skips_nothing(self):
+        pacer = Pacer()
+        self.assertFalse(any(pacer.should_skip(i, 10 + i / FPS) for i in range(200)))
+
+    def test_late_reply_skips_alternate_frames_until_caught_up(self):
+        pacer = Pacer(lag_limit=0.25)
+        now, rendered = 0.0, []
+        pacer.should_skip(0, now)
+        now += 1.0  # a one-second stall after the first frame
+        for i in range(1, 400):
+            skip = pacer.should_skip(i, now)
+            rendered.append(not skip)
+            now += 0 if skip else 0.039  # rendering is barely faster than playback
+        lag_end = now - 399 / FPS
+        self.assertLess(lag_end, 0.3)  # caught up
+        self.assertNotIn((False, False), list(zip(rendered, rendered[1:])))  # never two skips in a row
+        self.assertTrue(all(rendered[-50:]))  # back to every frame once on time
+
+
 class FakeEngine:
     """Renders 5 frames per audio chunk, after a small delay, from a worker thread."""
 
@@ -82,6 +102,9 @@ class FakeEngine:
 
     def abort(self):
         self.calls.append(("abort",))
+
+    def preempt(self):
+        self.calls.append(("preempt",))
 
 
 class ServiceTests(unittest.TestCase):
@@ -130,6 +153,8 @@ class ServiceTests(unittest.TestCase):
             frames, done = self.collect(ws)
             self.assertEqual(frames, [(1, i) for i in range(6)])
         self.assertEqual([c[0] for c in engine.calls].count("start"), 2)
+        order = [c[0] for c in engine.calls]
+        self.assertLess(order.index("preempt"), order.index("start"))  # closing frames never block a reply
 
     def test_reset_aborts_and_the_next_audio_starts_a_new_utterance(self):
         engine = FakeEngine()
