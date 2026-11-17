@@ -107,7 +107,7 @@ def get_settings() -> Settings:
             "PROCTOR_MODEL", "qwen3.8-omni-flash,qwen3.8-flash,qwen3-vl-plus,qwen-vl-plus"
         ),
         # 0 关闭画面监考。
-        proctor_interval_s=_bounded_int("PROCTOR_INTERVAL_S", 8, 0, 600),
+        proctor_interval_s=_bounded_int("PROCTOR_INTERVAL_S", 3, 0, 600),
         # 候选人沉默这么久后面试官主动询问;0 关闭(一直等候选人开口)。
         silence_nudge_s=_bounded_int("SILENCE_NUDGE_S", 20, 0, 300),
         # 键盘敲击声当场提醒的次数;提醒满之后再出现一次就结束面试。0 = 只记录,不提醒也不结束。

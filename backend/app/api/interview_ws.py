@@ -123,6 +123,9 @@ _MAX_FRAME_B64 = {
 }
 
 # 面试官刚说过话的这段时间内,录音里可能有它从扬声器传出的声音。
+# 两次监考检查之间至少歇这么久,模型应答比检查间隔还慢时也不会连轴打满。
+_PROCTOR_MIN_PAUSE_S = 0.5
+
 _INTERVIEWER_ECHO_NOTE = "这段时间面试官(AI)正在说话,录音里它的声音不算其他人。"
 
 _FINISHED_STATUSES = ("done", "completed")
@@ -474,8 +477,14 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
         """Every few seconds, have the vision model look at the newest camera frame."""
         monitor = ProctorMonitor()
         policy = ViolationPolicy(limit=settings.typing_warning_limit)
+        interval = float(settings.proctor_interval_s or 20)
+        last_start = clock()
         while True:
-            await asyncio.sleep(settings.proctor_interval_s or 20)
+            # Fixed rhythm: the time a check takes comes out of the wait, so a
+            # 3 s interval means a look every 3 s, not every 3 s plus the model's
+            # answer time. A check slower than the interval runs back to back.
+            await asyncio.sleep(max(_PROCTOR_MIN_PAUSE_S, interval - (clock() - last_start)))
+            last_start = clock()
             frame = camera["frame"]
             if frame is None or frame is camera["seen"]:
                 continue  # camera off or no new picture since the last look
