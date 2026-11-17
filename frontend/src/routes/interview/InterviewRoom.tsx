@@ -723,18 +723,6 @@ export default function InterviewRoom() {
         />
       </div>
 
-      {landingVideo === 'welcome' && !welcome.playing && !interviewEnded && (
-        // The greeting starts by itself when the lobby camera sees someone; this
-        // lets a visitor start or replay it without depending on the camera.
-        <button
-          type="button"
-          onClick={welcome.playNow}
-          className="absolute bottom-6 left-8 z-10 rounded-full bg-white/90 px-4 py-2 text-xs font-semibold text-[#4b4fe0] shadow backdrop-blur transition hover:bg-white active:scale-95"
-        >
-          播放欢迎视频
-        </button>
-      )}
-
       {requiresInvite && !session.active && (
         <div className="absolute bottom-6 left-1/2 z-20 w-[90%] max-w-md -translate-x-1/2 rounded-2xl bg-white/95 p-5 text-center text-slate-800 shadow-lg">
           <p className="font-semibold">请使用专属面试链接</p>

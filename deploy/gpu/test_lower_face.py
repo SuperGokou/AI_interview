@@ -26,12 +26,29 @@ class LowerFaceTests(unittest.TestCase):
         frame = portrait()
         result = LowerFace(frame, BOX).apply(self.mouth_patch(), speech=1)
         x1, y1, x2, y2 = BOX
-        nose_line = y1 + int((y2 - y1) * 0.50)  # model only regenerates below this
+        nose_line = y1 + int((y2 - y1) * 0.48)  # the blend never reaches the nose
         np.testing.assert_array_equal(result[:nose_line], frame[:nose_line])  # eyes, nose, hair
         np.testing.assert_array_equal(result[y2:], frame[y2:])  # neck and clothes
         np.testing.assert_array_equal(result[:, :x1], frame[:, :x1])
         np.testing.assert_array_equal(result[:, x2:], frame[:, x2:])
         self.assertTrue((result != frame).any())
+
+    def test_generated_face_is_moved_back_onto_the_portrait(self):
+        frame = portrait(150)
+        x1, y1, x2, y2 = BOX
+        p = patch(150)
+        cy, cx = 220, 120
+        p[cy - 6:cy + 6, cx - 25:cx + 25] = (60, 60, 190)  # where the model drew the mouth
+
+        def centre(result):
+            red = np.maximum(result[..., 2].astype(float) - result[..., 1] - 30, 0)
+            ys, xs = np.indices(red.shape)
+            return (red * xs).sum() / red.sum(), (red * ys).sum() / red.sum()
+
+        raw = centre(LowerFace(frame, BOX, generated_offset=(0, 0)).apply(p, 1))
+        moved = centre(LowerFace(frame, BOX, generated_offset=(3, 10)).apply(p, 1))
+        self.assertAlmostEqual(raw[0] - moved[0], 3, delta=0.6)
+        self.assertAlmostEqual(raw[1] - moved[1], 10, delta=0.8)
 
     def test_region_matches_the_full_frame_blend(self):
         frame = portrait()
@@ -47,6 +64,7 @@ class LowerFaceTests(unittest.TestCase):
         compositor = LowerFace(portrait(), BOX)
         mask = compositor.mask[..., 0]
         self.assertEqual(mask[0].max(), 0)
+        self.assertEqual(mask[-1].max(), 0)  # closed before the chin edge of the box
         self.assertEqual(mask[:, 0].max(), 0)
         self.assertEqual(mask[:, -1].max(), 0)
         self.assertAlmostEqual(float(mask.max()), 1.0, places=5)

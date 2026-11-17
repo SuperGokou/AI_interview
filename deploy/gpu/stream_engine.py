@@ -4,6 +4,7 @@ One engine owns the models and is shared by every connection; calls are serialis
 by a lock because they share the GPU. Run from the MuseTalk checkout.
 """
 import math
+import os
 import threading
 
 import cv2
@@ -16,7 +17,8 @@ from lower_face import LowerFace
 from musetalk.utils.utils import load_all_model
 from stream_logic import FPS, MODEL_RATE, UtteranceBuffer, resample_to_model_rate
 
-PORTRAIT_SIZE = (1672, 941)  # width, height
+PORTRAIT_WIDTH = 1672
+PORTRAIT_HEIGHTS = (941, 942)  # the still portrait, or a frame of the page's base video
 FACE_BOX = (750, 139, 990, 419)
 JPEG_QUALITY = 90
 PATCH_MARGIN = 4
@@ -32,7 +34,11 @@ _WINDOW = 10
 
 
 class StreamEngine:
-    def __init__(self, portrait="zoom-interviewer-listening.png", whisper_dir="models/whisper"):
+    def __init__(self, portrait=None, whisper_dir="models/whisper"):
+        # Render against the very picture the page shows underneath. The page's base
+        # layer is a video whose tone and position differ slightly from the still
+        # portrait; PORTRAIT lets the service use a frame of that video instead.
+        portrait = portrait or os.environ.get("PORTRAIT", "zoom-interviewer-listening.png")
         torch.set_num_threads(4)
         torch.manual_seed(42)
         self.device = torch.device("cuda:0")
@@ -43,9 +49,10 @@ class StreamEngine:
         self.whisper = WhisperModel.from_pretrained(whisper_dir).half().to(self.device).eval()
         self.extractor = AutoFeatureExtractor.from_pretrained(whisper_dir)
         frame = cv2.imread(str(portrait))
-        if frame is None or (frame.shape[1], frame.shape[0]) != PORTRAIT_SIZE:
-            raise ValueError("Expected the original 1672x941 interviewer portrait")
+        if frame is None or frame.shape[1] != PORTRAIT_WIDTH or frame.shape[0] not in PORTRAIT_HEIGHTS:
+            raise ValueError("Expected the 1672-wide interviewer portrait (941 or 942 high)")
         self.frame = frame
+        self.size = (frame.shape[1], frame.shape[0])
         x1, y1, x2, y2 = FACE_BOX
         with torch.inference_mode():
             self.latent = self.vae.get_latents_for_unet(cv2.resize(frame[y1:y2, x1:x2], (256, 256)))
@@ -59,18 +66,22 @@ class StreamEngine:
         x, y, w, h = self.patch
         return {
             "fps": FPS,
-            "frame": {"width": PORTRAIT_SIZE[0], "height": PORTRAIT_SIZE[1]},
+            "frame": {"width": self.size[0], "height": self.size[1]},
             "patch": {"x": x, "y": y, "width": w, "height": h},
         }
 
     def _patch_rect(self):
-        """Smallest rectangle (portrait coordinates) containing every blended pixel."""
+        """Smallest rectangle (portrait coordinates) containing every blended pixel.
+
+        Clamped to the face box: frames are cut from the box-sized blend, so a
+        rectangle reaching outside it would announce a size the JPEGs do not have
+        and the browser would stretch them."""
         ys, xs = np.nonzero(self.compositor.mask[..., 0] > 0)
-        x1, y1 = FACE_BOX[0], FACE_BOX[1]
-        left = max(0, x1 + int(xs.min()) - PATCH_MARGIN)
-        top = max(0, y1 + int(ys.min()) - PATCH_MARGIN)
-        right = min(PORTRAIT_SIZE[0], x1 + int(xs.max()) + 1 + PATCH_MARGIN)
-        bottom = min(PORTRAIT_SIZE[1], y1 + int(ys.max()) + 1 + PATCH_MARGIN)
+        x1, y1, x2, y2 = FACE_BOX
+        left = max(x1, x1 + int(xs.min()) - PATCH_MARGIN)
+        top = max(y1, y1 + int(ys.min()) - PATCH_MARGIN)
+        right = min(x2, x1 + int(xs.max()) + 1 + PATCH_MARGIN)
+        bottom = min(y2, y1 + int(ys.max()) + 1 + PATCH_MARGIN)
         return left, top, right - left, bottom - top
 
     @staticmethod
@@ -123,8 +134,10 @@ class StreamEngine:
                     index = frames.start + offset + k
                     face = cv2.resize(image, (x2 - x1, y2 - y1), interpolation=cv2.INTER_CUBIC)
                     composed = self.compositor.apply_region(face, gate[offset + k])
-                    ok, jpeg = cv2.imencode(".jpg", composed[py:py + ph, px:px + pw],
-                                            [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
+                    region = composed[py:py + ph, px:px + pw]
+                    if region.shape[:2] != (ph, pw):
+                        raise RuntimeError("patch does not match its announced size")
+                    ok, jpeg = cv2.imencode(".jpg", region, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
                     if not ok:
                         raise RuntimeError("JPEG encoding failed")
                     output.append((index, jpeg.tobytes()))

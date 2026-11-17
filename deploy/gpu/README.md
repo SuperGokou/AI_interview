@@ -83,6 +83,23 @@ ssh -N -L 18765:127.0.0.1:8765 <gpu-host>     # 本地调试用的隧道
 
 未配置、连不上、服务繁忙或中途断开时，面试照常进行，页面自动退回按音量驱动的近似口型。
 
+### 底图与对齐
+
+面试页面的底图是一段连续视频(`interviewer-continuous-v1.mp4`)，它比静态人像整体暗几个色阶，位置也差约 1 像素。口型必须基于页面实际显示的那一帧来渲染，否则嘴周围会出现色差：
+
+```sh
+# 在 MuseTalk 目录下，从视频左半边(聆听画面)取第一帧
+ffmpeg -i interviewer-continuous-v1.mp4 -vf "crop=1672:942:0:0" -frames:v 1 interviewer-base-frame.png
+echo "PORTRAIT=interviewer-base-frame.png" >> /opt/kunyao-musetalk/service.env
+systemctl restart kunyao-mouth-stream
+```
+
+模型画出的嘴相对人像原本的嘴有固定偏移(本人像实测：右 2.9、下 9.7 像素)，`lower_face.py` 里的 `GENERATED_FACE_OFFSET` 会把生成的下半脸移回原位。更换人像或取景框后需重新测量：
+
+```sh
+python measure_mouth.py interviewer-base-frame.png
+```
+
 ### 实测(NVIDIA L20，25 fps，每帧约 5.6 kB)
 
 | 场景 | 需要的播放延迟 |

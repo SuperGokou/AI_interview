@@ -256,29 +256,6 @@ describe('InterviewRoom landing and avatar state videos', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
-  test('the greeting can be started by hand, once, and shows no camera status', () => {
-    let now = 0;
-    vi.spyOn(performance, 'now').mockImplementation(() => now);
-    render(<InterviewRoom />);
-    const clip = () => screen.getByLabelText('AI 面试官欢迎视频');
-    expect(screen.queryByText(/摄像头/)).not.toBeInTheDocument();
-    expect(clip()).not.toHaveAttribute('autoplay');
-
-    fireEvent.click(screen.getByRole('button', { name: '播放欢迎视频' }));
-    expect(clip()).toHaveAttribute('autoplay');
-    expect(screen.queryByRole('button', { name: '播放欢迎视频' })).not.toBeInTheDocument();
-
-    // Detection seeing the same visitor a moment later must not restart the clip.
-    const playing = clip();
-    act(() => mocks.cameraSample!(true));
-    now = 600;
-    act(() => mocks.cameraSample!(true));
-    expect(clip()).toBe(playing);
-
-    fireEvent.ended(clip());
-    expect(screen.getByRole('button', { name: '播放欢迎视频' })).toBeInTheDocument(); // replay on request
-  });
-
   test('ten seconds absent stops an unfinished opening; detection pauses during interview', () => {
     let now = 0;vi.spyOn(performance,'now').mockImplementation(()=>now);
     const sample=(p:boolean,t:number)=>{now=t;act(()=>mocks.cameraSample!(p));};

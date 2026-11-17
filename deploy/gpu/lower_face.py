@@ -12,9 +12,11 @@ import numpy as np
 # the portrait's smiling cheeks around a neutral speaking mouth looks pasted on.
 # The top edge stays below the box midline, above which the model only
 # reconstructs the reference image.
-_CENTRE_Y = 0.77
+# The ellipse must also end inside the box: a mask still open at the box edge is
+# cut off there and leaves a hard line across the chin.
+_CENTRE_Y = 0.75
 _RADIUS_X = 0.43
-_RADIUS_Y = 0.25
+_RADIUS_Y = 0.24
 _FEATHER = 0.70
 
 # The model renders the face at 256 px, so the patch is softer than the portrait.
@@ -26,10 +28,20 @@ _MAX_TONE_SHIFT = 14.0
 _RIM_LOW, _RIM_HIGH = 0.02, 0.22
 
 
+# Where the model draws the closed mouth, relative to the portrait's own mouth, for
+# the 240x280 face box used here (measured over a 340-frame clip: +2.9 px right,
+# +9.7 px down). Uncorrected, the mouth sits visibly low and off-centre under the
+# nose. Re-measure with measure_mouth.py if the portrait or the box changes.
+GENERATED_FACE_OFFSET = (2.9, 9.7)
+
+
 class LowerFace:
-    def __init__(self, frame, box):
+    def __init__(self, frame, box, generated_offset=GENERATED_FACE_OFFSET):
         self.frame = frame
         self.box = box
+        dx, dy = generated_offset
+        # Translation that moves the generated face back onto the portrait's features.
+        self._realign = np.float32([[1, 0, -dx], [0, 1, -dy]]) if (dx or dy) else None
         x1, y1, x2, y2 = box
         width, height = x2 - x1, y2 - y1
         self.original = frame[y1:y2, x1:x2].astype(np.float32)
@@ -59,6 +71,11 @@ class LowerFace:
         if speech <= 0:
             return self.original.astype(np.uint8)
         patch = patch.astype(np.float32)
+        if self._realign is not None:
+            patch = cv2.warpAffine(
+                patch, self._realign, (patch.shape[1], patch.shape[0]),
+                flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE,
+            )
         blurred = cv2.GaussianBlur(patch, (0, 0), _SHARPEN_SIGMA)
         patch = patch + _SHARPEN_AMOUNT * (patch - blurred)
         shift = np.median(self.original[self.rim] - patch[self.rim], axis=0)
