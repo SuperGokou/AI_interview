@@ -12,7 +12,9 @@ _VISION_RULES = {
     "reading_motion": ("reading_motion", "medium"),
     "multi_person": ("multi_person", "high"),
     "person_absent": ("person_absent", "high"),
-    "suspicious_object": ("suspicious_object", "high"),
+    "phone": ("phone", "high"),
+    # 第二块屏幕、纸张这类要结合上下文判断,单独一条只算提醒。
+    "suspicious_object": ("suspicious_object", "medium"),
     # 声音线索是模型听出来的,单独一条只算提醒。
     "keyboard_typing": ("keyboard_typing", "medium"),
     "other_voice": ("other_voice", "medium"),

@@ -34,6 +34,7 @@ def test_objects_and_extra_people_count_on_first_sight_then_cool_down():
     assert monitor.update(["suspicious_object"], 0) == ["suspicious_object"]  # a phone held up briefly
     assert monitor.update(["suspicious_object", "multi_person"], 8) == ["multi_person"]
     assert monitor.update(["suspicious_object"], 60) == []  # same problem, no repeat yet
+    assert monitor.update(["phone"], 62) == ["phone"]  # a phone is its own finding
     assert monitor.update(["suspicious_object"], 130) == ["suspicious_object"]
 
 
@@ -261,3 +262,13 @@ def test_websocket_records_a_camera_finding(client, db_session, monkeypatch):
     assert [(e.kind, e.severity) for e in events] == [("multi_person", "high")]
     assert "第二个人" in events[0].evidence
     assert vision.frames == [b"frame-1"]  # an unchanged frame is not re-checked
+
+
+def test_a_phone_is_reported_even_right_after_another_object():
+    """Seen in a real interview: a monitor in the background was reported first and
+    the cooldown then hid the phone the candidate held up half a minute later."""
+    monitor = ProctorMonitor()
+    assert monitor.update(["suspicious_object"], 0) == ["suspicious_object"]
+    assert monitor.update(["phone", "suspicious_object"], 35) == ["phone"]
+    proctor = VisionProctor(_Vision({"flags": ["phone"], "detail": "手里拿着手机"}))
+    assert proctor.check(b"x")["flags"] == ["phone"]

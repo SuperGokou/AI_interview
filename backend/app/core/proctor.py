@@ -21,7 +21,8 @@ ALLOWED_FLAGS = (
     "multi_person",  # 画面里不止一个人
     "person_absent",  # 候选人不在画面里
     "gaze_off_screen",  # 明显长时间看向屏幕外
-    "suspicious_object",  # 手机、第二块屏幕、纸质资料、耳机等
+    "phone",  # 手机(拿在手里、举到镜头前、放在桌上都算)
+    "suspicious_object",  # 正在使用的第二块屏幕、平板、纸质资料、耳机
 )
 
 # 只有真的把声音送给了模型,才接受这些标记。
@@ -38,7 +39,9 @@ _SYSTEM = (
     "person_absent=画面里没有人;"
     "gaze_off_screen=候选人明显在看屏幕以外的固定位置(侧面或下方的另一块屏幕、手机、纸张),"
     "只是眨眼、短暂低头或看镜头旁边不算;"
-    "suspicious_object=能看到手机、第二块屏幕、平板、纸质资料、耳机。"
+    "phone=能看到手机,不管是拿在手里、举到镜头前、放在桌上还是只露出一部分;"
+    "suspicious_object=候选人正在使用或查看的第二块屏幕、平板、纸质资料,或戴着耳机。"
+    "背景里普通摆放、没有在用的显示器、电视、书本,以及候选人面试用的这台电脑,都不算。"
     "detail 用一句中文描述你看到的依据,并顺带说明候选人神态(如专注、紧张、频繁看别处)和背景环境"
     "(如办公室、卧室、公共场所、有他人走动)。"
     '只输出 JSON:{"flags":["..."],"detail":"..."}'
@@ -51,7 +54,9 @@ _SYSTEM_WITH_AUDIO = (
     "person_absent=画面里没有人;"
     "gaze_off_screen=候选人明显在看屏幕以外的固定位置(侧面或下方的另一块屏幕、手机、纸张),"
     "只是眨眼、短暂低头或看镜头旁边不算;"
-    "suspicious_object=能看到手机、第二块屏幕、平板、纸质资料、耳机;"
+    "phone=能看到手机,不管是拿在手里、举到镜头前、放在桌上还是只露出一部分;"
+    "suspicious_object=候选人正在使用或查看的第二块屏幕、平板、纸质资料,或戴着耳机。"
+    "背景里普通摆放、没有在用的显示器、电视、书本,以及候选人面试用的这台电脑,都不算;"
     "keyboard_typing=能清楚听到持续的键盘敲击声(连续多下),偶尔一两下点击或鼠标声不算;"
     "other_voice=能听到候选人以外的真人在说话或低声提示。面试官是 AI,它的声音可能从扬声器传进录音,"
     "那不算其他人;电视、广播等明显的背景节目声也不算,归入 background_noise;"
@@ -193,14 +198,14 @@ class VisionProctor:
 # judgement calls on a single frame, so those need two checks in a row.
 # A second voice can also be brief (a whispered hint), so it counts at once;
 # typing and noise have to persist across two checks.
-IMMEDIATE_FLAGS = frozenset({"multi_person", "suspicious_object", "other_voice"})
+IMMEDIATE_FLAGS = frozenset({"multi_person", "phone", "suspicious_object", "other_voice"})
 
 
 class ProctorMonitor:
     """Debounce: objects and extra people count at once, gaze and absence need two
     consecutive checks; a reported flag is not repeated for a while."""
 
-    def __init__(self, *, cooldown_s: float = 120.0):
+    def __init__(self, *, cooldown_s: float = 60.0):
         self._cooldown_s = cooldown_s
         self._previous: frozenset[str] = frozenset()
         self._reported_at: dict[str, float] = {}

@@ -27,6 +27,7 @@ from app.core.integrity_analysis import analyze_integrity
 from app.core.mouth_stream import MouthStream
 from app.core.proctor import ProctorMonitor, ProctorUnavailable, VisionProctor
 from app.core.proctor_audio import AudioWindow, pcm_to_wav, worth_hearing
+from app.core.silence import SilenceWatch, nudge_text
 from app.core.interview_bridge import InterviewBridge
 from app.core.report_store import build_report
 from app.core.scoring import ReportGenerator
@@ -284,6 +285,7 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
     max_seconds = max(1, job.duration_minutes) * 60 + _OVERTIME_GRACE_S
 
     timer = TurnTimer(sample_rate=settings.output_sample_rate)
+    silence = SilenceWatch(check_in_s=float(settings.silence_nudge_s or 20))
     clock = asyncio.get_running_loop().time
 
     def _persist(role: str, text: str, *, latency_ms: int | None = None) -> None:
@@ -354,6 +356,9 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                     pcm = event["data"]
                     timer.on_interviewer_audio(len(pcm), clock())
                     interviewer["spoke_at"] = clock()
+                    silence.interviewer_audio(
+                        len(pcm) / 2 / settings.output_sample_rate, clock()
+                    )
                     await ws.send_json(
                         {
                             "type": "audio",
@@ -381,10 +386,12 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                     _persist(
                         "candidate", text, latency_ms=timer.on_candidate_transcript().latency_ms
                     )
+                    silence.candidate_active(clock())
                     await ws.send_json({"type": "user_transcript", "text": text})
                     _spawn(check_ai_text(text))
                 elif kind == "speech_started":
                     timer.on_candidate_speech_started(clock())
+                    silence.candidate_active(clock())
                 elif kind == "vision":
                     # 注:真实 Qwen 视觉观测的产出留待 Phase 6 联调;这里建好处理管线。
                     signals = interpret_visual_observation(
@@ -454,6 +461,21 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
             except Exception:
                 logger.exception("camera proctoring check failed")
 
+    async def silence_loop():
+        """A real interviewer does not wait for ever: check in, then move on."""
+        while True:
+            await asyncio.sleep(1.0)
+            stage = silence.due(clock())
+            if stage is None:
+                continue
+            try:
+                await bridge.trigger_response(nudge_text(stage, job.language))
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("could not prompt the interviewer to break the silence")
+
+    silence_task = asyncio.create_task(silence_loop()) if settings.silence_nudge_s else None
     proctor_task = asyncio.create_task(proctor_loop()) if proctor is not None else None
     down_task = asyncio.create_task(pump_downstream())
     relay_task = asyncio.create_task(relay_mouth_frames()) if mouth is not None else None
@@ -495,7 +517,9 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
             if background:
                 # Let an in-flight check on the final answer finish and be recorded.
                 await asyncio.wait(background, timeout=_DETECTION_DRAIN_S)
-            for task in (down_task, opener_task, relay_task, proctor_task, *background):
+            for task in (
+                down_task, opener_task, relay_task, proctor_task, silence_task, *background
+            ):
                 if task is not None:
                     task.cancel()
                     try:

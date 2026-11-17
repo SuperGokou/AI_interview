@@ -47,6 +47,7 @@ class Settings:
     proctor_base_url: str
     proctor_model: str
     proctor_interval_s: int
+    silence_nudge_s: int
     # 文本向量(AI 答案相似度);OpenAI 兼容接口
     embedding_api_key: str
     embedding_base_url: str
@@ -106,6 +107,8 @@ def get_settings() -> Settings:
         ),
         # 0 关闭画面监考。
         proctor_interval_s=_bounded_int("PROCTOR_INTERVAL_S", 8, 0, 600),
+        # 候选人沉默这么久后面试官主动询问;0 关闭(一直等候选人开口)。
+        silence_nudge_s=_bounded_int("SILENCE_NUDGE_S", 20, 0, 300),
         # 默认复用百炼的 key;也可指向自建的开源向量模型服务(如 bge-m3)。
         embedding_api_key=os.getenv("EMBEDDING_API_KEY") or dashscope_key,
         embedding_base_url=os.getenv(
