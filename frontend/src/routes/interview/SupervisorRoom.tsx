@@ -237,10 +237,12 @@ export default function SupervisorRoom() {
   const me = info?.supervisors.find((peer) => peer.is_current)?.label;
   const others = (info?.supervisors.length ?? 1) - 1;
 
-  // Follow the conversation as new lines arrive.
-  const transcriptEndRef = useRef<HTMLDivElement | null>(null);
+  // Follow the conversation as new lines arrive. Only the transcript box scrolls:
+  // scrollIntoView would drag the whole page down and hide the candidate.
+  const transcriptBoxRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    transcriptEndRef.current?.scrollIntoView?.({ block: 'end' });
+    const box = transcriptBoxRef.current;
+    if (box) box.scrollTop = box.scrollHeight;
   }, [transcripts.length]);
 
   return (
@@ -324,7 +326,7 @@ export default function SupervisorRoom() {
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          <div ref={transcriptBoxRef} className="min-h-0 flex-1 overflow-y-auto p-4">
             {loading && <div className="text-sm text-white/55">加载中...</div>}
             {!loading && !error && !feed?.live && (
               <div className="flex h-full items-center justify-center text-center text-sm text-white/45">
@@ -341,7 +343,6 @@ export default function SupervisorRoom() {
                 {transcripts.map((item, index) => (
                   <TranscriptRow key={`${item.ts ?? 'tx'}-${index}`} item={item} />
                 ))}
-                <div ref={transcriptEndRef} />
               </div>
             )}
           </div>
