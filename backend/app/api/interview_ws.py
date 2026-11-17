@@ -431,6 +431,7 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                 turn["utterance"] += 1
                 turn["samples"] = 0
         silence.cut_short(now)
+        logger.info("interview %s: interviewer cut off mid-reply", session_id)
         await ws.send_json({"type": "interrupt"})
 
     async def say_now(text: str):
@@ -481,12 +482,12 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                     _persist(
                         "candidate", text, latency_ms=timer.on_candidate_transcript().latency_ms
                     )
-                    silence.candidate_active(clock())
+                    silence.candidate_stopped(clock())
                     await ws.send_json({"type": "user_transcript", "text": text})
                     _spawn(check_ai_text(text))
                 elif kind == "speech_started":
                     timer.on_candidate_speech_started(clock())
-                    silence.candidate_active(clock())
+                    silence.candidate_started(clock())
                     if (
                         settings.barge_in_hold_ms
                         and barge["task"] is None
@@ -494,6 +495,7 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                     ):
                         barge["task"] = _spawn(barge_in())
                 elif kind == "speech_stopped":
+                    silence.candidate_stopped(clock())
                     if barge["task"] is not None:
                         barge["task"].cancel()  # a cough or a word, not an interruption
                         barge["task"] = None
@@ -616,6 +618,7 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
             stage = silence.due(clock())
             if stage is None:
                 continue
+            logger.info("interview %s: breaking the silence (%s)", session_id, stage)
             try:
                 await bridge.trigger_response(
                     nudge_text(stage, job.language, repeated=repeated)

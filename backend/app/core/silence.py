@@ -81,12 +81,16 @@ class SilenceWatch:
     check_in_s: float = 20.0
     move_on_s: float = 30.0
     max_skipped: int = 3
+    # If the end of the candidate's speech is never reported, stop treating them
+    # as "still talking" after this long, or the interviewer would wait for ever.
+    max_talk_s: float = 120.0
 
     def __post_init__(self) -> None:
         self._quiet_since: float | None = None  # None until the interviewer has spoken
         self._checked_in = False
         self._skipped = 0
         self._paused = False
+        self._talking_since: float | None = None  # the candidate is mid-speech
 
     @property
     def repeated(self) -> bool:
@@ -111,8 +115,22 @@ class SilenceWatch:
         if self._quiet_since is not None:
             self._quiet_since = min(self._quiet_since, now)
 
+    def candidate_started(self, now: float) -> None:
+        """The candidate began to speak. Until they stop, this is not a silence:
+        a 40-second answer must not be met with "take your time" half-way through."""
+        self._talking_since = now
+        self.candidate_active(now)
+
+    def candidate_stopped(self, now: float) -> None:
+        """The candidate stopped speaking; the quiet period starts here."""
+        self._talking_since = None
+        self.candidate_active(now)
+
+    def _talking(self, now: float) -> bool:
+        return self._talking_since is not None and now - self._talking_since < self.max_talk_s
+
     def candidate_active(self, now: float) -> None:
-        """The candidate started speaking or finished an answer."""
+        """The candidate did something (spoke, finished an answer): restart the wait."""
         if self._quiet_since is not None:
             self._quiet_since = max(self._quiet_since, now)
         self._checked_in = False
@@ -122,6 +140,9 @@ class SilenceWatch:
     def due(self, now: float) -> str | None:
         """What the interviewer should do now, if anything. Each stage fires once."""
         if self._quiet_since is None or self._paused:
+            return None
+        if self._talking(now):
+            self._quiet_since = max(self._quiet_since, now)  # still answering
             return None
         quiet = now - self._quiet_since
         if not self._checked_in:

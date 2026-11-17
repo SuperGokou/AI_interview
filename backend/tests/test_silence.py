@@ -129,3 +129,24 @@ def test_echo_window_goes_by_playback_not_generation():
     assert watch.audible_since(15)
     assert not watch.audible_since(21)
     assert watch.audible_since(21, margin=2)
+
+
+def test_a_long_answer_is_not_a_silence():
+    """Seen in a real interview: 20 s into a 30 s answer the interviewer said
+    "take your time", because only the start of speech reset the wait."""
+    watch = SilenceWatch(check_in_s=20, move_on_s=30)
+    watch.interviewer_audio(5, now=0)
+    watch.candidate_started(now=6)
+    assert [watch.due(t) for t in (20, 30, 45)] == [None, None, None]  # still answering
+    watch.candidate_stopped(now=46)
+    assert watch.due(60) is None  # 14 s after the answer ended
+    assert watch.due(66) == CHECK_IN  # 20 s after it ended
+
+
+def test_a_missing_end_of_speech_does_not_block_the_interviewer_for_ever():
+    watch = SilenceWatch(check_in_s=20, move_on_s=30, max_talk_s=60)
+    watch.interviewer_audio(0, now=0)
+    watch.candidate_started(now=1)  # ...and the stop event never arrives
+    assert watch.due(50) is None
+    assert watch.due(61) is None  # counted as quiet only from here on
+    assert watch.due(82) == CHECK_IN
