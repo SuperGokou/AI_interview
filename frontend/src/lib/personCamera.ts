@@ -1,26 +1,10 @@
-/** How long the camera may stay silent before the page explains what it is waiting for. */
-const SLOW_CAMERA_MS = 4000;
-
-/** Why is the camera still not open? Ask the browser, when it can tell us. */
-async function describeCameraWait(): Promise<string> {
-  try {
-    const result = await navigator.permissions.query({ name: 'camera' as PermissionName });
-    if (result.state === 'prompt') return '等待摄像头授权：请在浏览器地址栏左侧的弹窗里点“允许”。';
-    if (result.state === 'granted') return '摄像头没有响应：请关闭正在使用摄像头的其他程序，或检查摄像头是否被禁用。';
-    if (result.state === 'denied') return '摄像头权限已被拒绝：请点击地址栏左侧的图标，把摄像头改为“允许”后刷新页面。';
-  } catch {
-    // Some browsers cannot report camera permission; fall through to the generic hint.
-  }
-  return '仍在等待摄像头：请允许摄像头权限，并确认没有其他程序占用。';
-}
-
 export function startPersonCamera(onSample: (present: boolean | null) => void, onStatus: (status: string, error: boolean) => void): () => void {
   let disposed = false, stream: MediaStream | undefined, worker: Worker | undefined;
-  let timer = 0, watchdog = 0, slowHint = 0, busy = false, lastTime = -1;
+  let timer = 0, watchdog = 0, busy = false, lastTime = -1;
   const video = document.createElement('video');
   video.muted = true; video.playsInline = true;
   const stop = () => {
-    disposed = true; window.clearTimeout(timer); window.clearTimeout(watchdog); window.clearTimeout(slowHint);
+    disposed = true; window.clearTimeout(timer); window.clearTimeout(watchdog);
     worker?.terminate(); video.pause(); video.srcObject = null;
     stream?.getTracks().forEach(t => { t.onended = null; t.onmute = null; t.onunmute = null; t.stop(); });
     document.removeEventListener('visibilitychange', visibility);
@@ -45,11 +29,6 @@ export function startPersonCamera(onSample: (present: boolean | null) => void, o
   };
   document.addEventListener('visibilitychange', visibility);
   onStatus('正在开启摄像头…', false);
-  // Opening the camera can wait indefinitely on an unanswered permission prompt or
-  // a device another program holds. Say so instead of looking frozen.
-  slowHint = window.setTimeout(() => {
-    void describeCameraWait().then(message => { if (!disposed && !worker) onStatus(message, false); });
-  }, SLOW_CAMERA_MS);
   void (async () => {
     try {
       if (!navigator.mediaDevices?.getUserMedia) throw new Error('unsupported');
@@ -60,7 +39,6 @@ export function startPersonCamera(onSample: (present: boolean | null) => void, o
       track.onmute = () => { onSample(null); onStatus('摄像头暂不可用，人员检测已暂停。', false); };
       track.onunmute = () => { onSample(null); };
       video.srcObject = stream; await video.play();
-      window.clearTimeout(slowHint);
       if (disposed) return;
       onStatus('正在加载人员检测…', false);
       worker = new Worker('/vendor/presence/person-worker.js');

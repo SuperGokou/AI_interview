@@ -256,12 +256,12 @@ describe('InterviewRoom landing and avatar state videos', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
-  test('shows what the greeting is waiting for and can be started by hand, once', () => {
+  test('the greeting can be started by hand, once, and shows no camera status', () => {
     let now = 0;
     vi.spyOn(performance, 'now').mockImplementation(() => now);
     render(<InterviewRoom />);
     const clip = () => screen.getByLabelText('AI 面试官欢迎视频');
-    expect(screen.getByText('正在开启摄像头…')).toBeInTheDocument();
+    expect(screen.queryByText(/摄像头/)).not.toBeInTheDocument();
     expect(clip()).not.toHaveAttribute('autoplay');
 
     fireEvent.click(screen.getByRole('button', { name: '播放欢迎视频' }));
