@@ -270,7 +270,7 @@ def test_interview_is_closed_at_the_time_limit(client, db_session, ws_fakes, mon
     _seed_session(db_session, token="tok-late", duration=1)
     with client.websocket_connect("/ws/interview?token=tok-late") as ws:
         frame = ws.receive_json()
-        assert frame["type"] == "error" and "时间已到" in frame["message"]
+        assert frame["type"] == "ended" and "时间已到" in frame["message"]
     db_session.expire_all()
     assert db_session.query(models.InterviewSession).one().status == "done"
 

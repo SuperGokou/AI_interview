@@ -454,7 +454,13 @@ export default function InterviewRoom() {
     if (timeExpired) handleEndRef.current();
   }, [timeExpired]);
 
-  const displayError = session.error || startError || (!showInterviewAvatar && !interviewEnded && welcome.error ? welcome.status : '');
+  // The server ended it (time limit, repeated violations): same closing screen,
+  // with the reason shown, instead of dropping back to the start page.
+  useEffect(() => {
+    if (session.endedReason) handleEndRef.current();
+  }, [session.endedReason]);
+
+  const displayError = session.endedReason || session.error || startError || (!showInterviewAvatar && !interviewEnded && welcome.error ? welcome.status : '');
   const integrityDot = INTEGRITY_COLOR[session.integrity];
   const startButtonDisabled = isStarting || interviewEnded;
 

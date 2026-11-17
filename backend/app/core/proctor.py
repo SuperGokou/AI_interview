@@ -58,7 +58,8 @@ _SYSTEM_WITH_AUDIO = (
     "suspicious_object=候选人正在使用或查看的第二块屏幕、平板、纸质资料,或戴着耳机。"
     "背景里普通摆放、没有在用的显示器、电视、书本,以及候选人面试用的这台电脑,都不算;"
     "keyboard_typing=能清楚听到持续的键盘敲击声(连续多下),偶尔一两下点击或鼠标声不算;"
-    "other_voice=能听到候选人以外的真人在说话或低声提示。面试官是 AI,它的声音可能从扬声器传进录音,"
+    "other_voice=能清楚听到候选人以外的真人在说话或低声提示,而且听得出是在对候选人说话。"
+    "模糊不清、听不出内容的人声,以及底噪里若有若无的声音,一律不算。面试官是 AI,它的声音可能从扬声器传进录音,"
     "那不算其他人;电视、广播等明显的背景节目声也不算,归入 background_noise;"
     "background_noise=环境明显嘈杂(多人交谈、电视、街道、施工等),会影响面试。"
     "detail 用一句中文描述你看到和听到的依据,并顺带说明候选人神态和背景环境。"
@@ -200,9 +201,10 @@ class VisionProctor:
 # Things that are either in the picture or not: one clear sighting is enough, and
 # they can be brief (a phone held up for a few seconds). Gaze and absence are
 # judgement calls on a single frame, so those need two checks in a row.
-# A second voice can also be brief (a whispered hint), so it counts at once;
-# typing and noise have to persist across two checks.
-IMMEDIATE_FLAGS = frozenset({"multi_person", "phone", "suspicious_object", "other_voice"})
+# Everything heard has to persist across two checks. A second voice used to
+# count at once, but a faint echo or a murmur in the noise floor was enough to
+# raise it, and it is a violation that can end the interview.
+IMMEDIATE_FLAGS = frozenset({"multi_person", "phone", "suspicious_object"})
 
 
 class ProctorMonitor:

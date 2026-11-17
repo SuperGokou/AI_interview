@@ -59,6 +59,8 @@ export interface UseInterviewSessionResult {
   /** The mouth frame to show right now, kept in step with audio playback. */
   mouthFrameRef: React.MutableRefObject<MouthFrame | null>;
   error: string;
+  /** Why the server ended the interview (time limit, repeated violations); '' otherwise. */
+  endedReason: string;
 }
 
 export interface UseInterviewSessionOptions {
@@ -91,6 +93,9 @@ export function useInterviewSession(
   const [speaking, setSpeaking] = useState(false);
   const mouthOpeningRef = useRef(0);
   const [error, setError] = useState('');
+  // Set when the server ends the interview (time limit, repeated violations).
+  const [endedReason, setEndedReason] = useState('');
+  const serverErrorRef = useRef(''); // survives the cleanup that a server close triggers
   const [micEnabled, setMicEnabledState] = useState(true);
   const [cameraEnabled, setCameraEnabledState] = useState(true);
 
@@ -277,6 +282,8 @@ export function useInterviewSession(
       }
       startingRef.current = true;
       setError('');
+      setEndedReason('');
+      serverErrorRef.current = '';
 
       let stream: MediaStream;
       if (preStream) {
@@ -387,6 +394,9 @@ export function useInterviewSession(
         if (wsRef.current === ws) {
           wsRef.current = null;
           stop();
+          // stop() clears the error line; what the server said before it hung up
+          // is exactly what the candidate needs to see.
+          if (serverErrorRef.current) setError(serverErrorRef.current);
         }
       };
 
@@ -494,7 +504,10 @@ export function useInterviewSession(
           if (lvl === 'green' || lvl === 'yellow' || lvl === 'red') {
             setIntegrity(lvl);
           }
+        } else if (msg.type === 'ended' && typeof msg.message === 'string') {
+          setEndedReason(msg.message);
         } else if (msg.type === 'error' && typeof msg.message === 'string') {
+          serverErrorRef.current = msg.message;
           setError(msg.message);
         }
       };
@@ -685,5 +698,6 @@ export function useInterviewSession(
     mouthConfig,
     mouthFrameRef,
     error,
+    endedReason,
   };
 }

@@ -118,3 +118,14 @@ def test_websocket_prompts_the_interviewer_when_the_candidate_stays_silent(
             import time; time.sleep(0.02)
 
     assert any("没有说话" in p for p in _Bridge.prompts)
+
+
+def test_echo_window_goes_by_playback_not_generation():
+    """A 20 s reply is generated within a second but plays for 20 s: a sound clip
+    recorded 15 s in still has the interviewer's voice in it."""
+    watch = SilenceWatch()
+    assert not watch.audible_since(0)
+    watch.interviewer_audio(20, now=0)
+    assert watch.audible_since(15)
+    assert not watch.audible_since(21)
+    assert watch.audible_since(21, margin=2)

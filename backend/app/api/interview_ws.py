@@ -126,6 +126,9 @@ _MAX_FRAME_B64 = {
 # 两次监考检查之间至少歇这么久,模型应答比检查间隔还慢时也不会连轴打满。
 _PROCTOR_MIN_PAUSE_S = 0.5
 
+# 面试官的话音落下后,房间里的余响和回声消除的收敛还要一小会儿。
+_ECHO_TAIL_S = 1.5
+
 _INTERVIEWER_ECHO_NOTE = "这段时间面试官(AI)正在说话,录音里它的声音不算其他人。"
 
 _FINISHED_STATUSES = ("done", "completed")
@@ -435,7 +438,6 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                     reply["generating"] = True
                     pcm = event["data"]
                     timer.on_interviewer_audio(len(pcm), clock())
-                    interviewer["spoke_at"] = clock()
                     silence.interviewer_audio(
                         len(pcm) / 2 / settings.output_sample_rate, clock()
                     )
@@ -526,23 +528,30 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
     camera = {"frame": None, "seen": None}
     # Sound for proctoring: the browser's unprocessed microphone when it sends one,
     # otherwise the (noise-suppressed) audio the interviewer hears.
-    room_audio = {"raw": AudioWindow(), "mic": AudioWindow(), "has_raw": False}
-    interviewer = {"spoke_at": float("-inf")}
+    room_audio = {
+        "raw": AudioWindow(), "mic": AudioWindow(), "has_raw": False, "heard_from": clock(),
+    }
 
     def recent_sound() -> tuple[bytes | None, str]:
         raw, mic = room_audio["raw"].take(), room_audio["mic"].take()
         pcm = raw if room_audio["has_raw"] else mic
         if not worth_hearing(pcm):
+            room_audio["heard_from"] = clock()
             return None, ""
-        spoke_recently = clock() - interviewer["spoke_at"] <= (settings.proctor_interval_s or 20)
-        return pcm_to_wav(pcm), _INTERVIEWER_ECHO_NOTE if spoke_recently else ""
+        # Judged by when the interviewer's audio was *played*, not generated: a reply
+        # is produced in a second or two but keeps playing, queued behind earlier
+        # speech, long after. Going by generation time let its echo count as a person.
+        heard_from = room_audio["heard_from"]
+        room_audio["heard_from"] = clock()
+        echo = silence.audible_since(heard_from, margin=playback_margin_s + _ECHO_TAIL_S)
+        return pcm_to_wav(pcm), _INTERVIEWER_ECHO_NOTE if echo else ""
 
     async def end_for_violations(warnings: int):
         """Say why, give the interviewer time to finish the sentence, then hang up."""
         await run_in_threadpool(_record_termination, bind, session_id, warnings)
         await bridge.trigger_response(ending_text(job.language))
         await asyncio.sleep(FAREWELL_SECONDS)
-        await ws.send_json({"type": "error", "message": end_notice(job.language)})
+        await ws.send_json({"type": "ended", "message": end_notice(job.language)})
         await ws.close()
 
     async def proctor_loop():
@@ -631,7 +640,7 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
     except TimeoutError:
         logger.info("interview %s reached its time limit; closing", session_id)
         try:
-            await ws.send_json({"type": "error", "message": "面试时间已到，本次面试已自动结束。"})
+            await ws.send_json({"type": "ended", "message": "面试时间已到，本次面试已自动结束。"})
             await ws.close()
         except Exception:  # the peer may already be gone
             pass

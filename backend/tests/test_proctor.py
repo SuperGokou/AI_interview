@@ -142,10 +142,10 @@ def test_falling_back_from_the_omni_model_drops_the_sound_mid_request():
     assert proctor.check(b"jpeg", b"RIFFwav")["flags"] == ["multi_person"]
 
 
-def test_a_second_voice_counts_at_once_typing_needs_two_checks():
+def test_sounds_need_two_checks_in_a_row():
     monitor = ProctorMonitor()
-    assert monitor.update(["other_voice", "keyboard_typing"], 0) == ["other_voice"]
-    assert monitor.update(["keyboard_typing"], 8) == ["keyboard_typing"]
+    assert monitor.update(["other_voice", "keyboard_typing"], 0) == []
+    assert monitor.update(["other_voice", "keyboard_typing"], 5) == ["keyboard_typing", "other_voice"]
 
 
 def test_audio_window_keeps_recent_sound_and_skips_silence():
@@ -208,9 +208,15 @@ def test_websocket_sends_room_sound_to_the_proctor(client, db_session, monkeypat
         return json.dumps({"type": kind, "data": base64.b64encode(payload).decode()})
 
     with client.websocket_connect("/ws/interview?token=tok-sound") as ws:
-        for _ in range(3):
-            ws.send_text(message("proctor_audio", second))
-        ws.send_text(message("image", b"frame-1"))
+        import time
+
+        for round_ in (1, 2):  # a sound has to be heard in two checks running
+            for _ in range(3):
+                ws.send_text(message("proctor_audio", second))
+            ws.send_text(message("image", b"frame-%d" % round_))
+            deadline = time.time() + 5
+            while len(hearing.calls) < round_ and time.time() < deadline:
+                time.sleep(0.02)
         assert ws.receive_json() == {"type": "integrity", "level": "yellow"}
 
     db_session.expire_all()

@@ -99,7 +99,7 @@ def test_websocket_warns_then_ends_the_interview(client, db_session, monkeypatch
     warnings = [p for p in _Bridge.prompts if "次违规,累计" in p]
     assert len(warnings) == 2
     assert "多次违规" in _Bridge.prompts[-1]
-    assert {"type": "error", "message": "监考多次检测到违规行为，属于多次违规，本次面试已结束。"} in received
+    assert {"type": "ended", "message": "监考多次检测到违规行为，属于多次违规，本次面试已结束。"} in received
 
     db_session.expire_all()
     kinds = [e.kind for e in db_session.query(models.CheatEvent).all()]

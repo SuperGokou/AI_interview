@@ -89,6 +89,10 @@ class SilenceWatch:
         """Whether audio already sent to the page is still playing there."""
         return self._quiet_since is not None and self._quiet_since + margin > now
 
+    def audible_since(self, since: float, *, margin: float = 0.0) -> bool:
+        """Whether the interviewer could be heard at any point from `since` on."""
+        return self._quiet_since is not None and self._quiet_since + margin > since
+
     def cut_short(self, now: float) -> None:
         """Playback was stopped early (the candidate talked over the interviewer)."""
         if self._quiet_since is not None:
