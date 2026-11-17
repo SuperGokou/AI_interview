@@ -105,6 +105,7 @@ export function useInterviewSession(
   // reference the current values without stale captures.
   const streamRef = useRef<MediaStream | null>(null);
   const proctorStreamRef = useRef<MediaStream | null>(null); // unprocessed mic, proctoring only
+  const rawMicAllowedRef = useRef(true); // the server can switch the second capture off
   const wsRef = useRef<WebSocket | null>(null);
   const captureCtxRef = useRef<AudioContext | null>(null);
   const playbackCtxRef = useRef<AudioContext | null>(null);
@@ -475,6 +476,14 @@ export function useInterviewSession(
           const config = parseMouthConfig(msg);
           mouthConfigRef.current = config;
           setMouthConfig(config);
+        } else if (msg.type === 'interrupt') {
+          // The candidate talked over the interviewer: stop what is still queued.
+          playerRef.current?.reset();
+          clearMouthFrames();
+        } else if (msg.type === 'proctor_config') {
+          rawMicAllowedRef.current = false;
+          proctorStreamRef.current?.getTracks().forEach((t) => t.stop());
+          proctorStreamRef.current = null;
         } else if (msg.type === 'mouth_off') {
           // The renderer is gone for this interview: back to the audio-driven mouth.
           clearMouthFrames();
@@ -554,6 +563,7 @@ export function useInterviewSession(
         // what proctoring listens for (typing, a second voice in the room).
         // Best effort: the interview carries on without it.
         try {
+          if (!rawMicAllowedRef.current) throw new Error('second capture switched off');
           const proctorStream = await navigator.mediaDevices.getUserMedia({
             audio: {
               echoCancellation: true, // keep the interviewer's own voice out
@@ -561,7 +571,7 @@ export function useInterviewSession(
               autoGainControl: false,
             },
           });
-          if (wsRef.current !== ws) {
+          if (wsRef.current !== ws || !rawMicAllowedRef.current) {
             proctorStream.getTracks().forEach((t) => t.stop());
             return;
           }

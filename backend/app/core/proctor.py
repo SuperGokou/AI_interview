@@ -187,8 +187,12 @@ class VisionProctor:
             return {"flags": [], "detail": ""}
         flags = data.get("flags") if isinstance(data, dict) else None
         detail = data.get("detail") if isinstance(data, dict) else ""
+        kept = [f for f in flags if f in allowed] if isinstance(flags, list) else []
+        if "phone" in kept:
+            # The model tends to report a phone as an object too; it is one finding.
+            kept = [f for f in kept if f != "suspicious_object"]
         return {
-            "flags": [f for f in flags if f in allowed] if isinstance(flags, list) else [],
+            "flags": kept,
             "detail": detail.strip()[:300] if isinstance(detail, str) else "",
         }
 

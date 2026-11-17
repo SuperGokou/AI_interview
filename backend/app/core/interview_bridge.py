@@ -9,6 +9,7 @@
 - {"kind": "user_transcript", "text": <str>}    候选人语音转写(SDK 支持时)
 - {"kind": "response_done"}                      面试官本轮回复的音频已全部下发
 - {"kind": "speech_started"}                     服务端 VAD 检测到候选人开口
+- {"kind": "speech_stopped"}                     服务端 VAD 检测到候选人停下
 - {"kind": "close"}                              会话关闭
 """
 
@@ -47,6 +48,7 @@ _EVT_TRANSCRIPT_DONE = "response.audio_transcript.done"
 _EVT_RESPONSE_DONE = "response.done"
 _EVT_USER_TRANSCRIPT = "conversation.item.input_audio_transcription.completed"
 _EVT_SPEECH_STARTED = "input_audio_buffer.speech_started"
+_EVT_SPEECH_STOPPED = "input_audio_buffer.speech_stopped"
 
 
 def _default_factory(model: str, callback, url: str, api_key: str = ""):
@@ -117,6 +119,8 @@ class InterviewBridge:
             self._emit({"kind": "user_transcript", "text": message.get("transcript", "")})
         elif event_type == _EVT_SPEECH_STARTED:
             self._emit({"kind": "speech_started"})
+        elif event_type == _EVT_SPEECH_STOPPED:
+            self._emit({"kind": "speech_stopped"})
 
     async def connect(self) -> None:
         self._loop = asyncio.get_running_loop()
@@ -157,6 +161,12 @@ class InterviewBridge:
         create = getattr(self._conv, "create_response", None)
         if callable(create):
             create(instructions=instructions or None)
+
+    async def cancel_response(self) -> None:
+        """Stop the reply that is being generated (the candidate talked over it)."""
+        cancel = getattr(self._conv, "cancel_response", None)
+        if callable(cancel):
+            cancel()
 
     async def send_audio(self, pcm: bytes) -> None:
         self._conv.append_audio(base64.b64encode(pcm).decode())

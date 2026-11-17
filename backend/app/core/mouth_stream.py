@@ -78,6 +78,12 @@ class MouthStream:
         await self._send(json.dumps({"type": "end"}))
         return True
 
+    async def reset(self) -> None:
+        """Drop the utterance being rendered (the reply was cut short)."""
+        if self._pending_audio:
+            self._pending_audio = False
+            await self._send(json.dumps({"type": "reset"}))
+
     async def frames(self) -> AsyncIterator[bytes]:
         """Yield frame messages (8-byte header + JPEG) exactly as received."""
         try:

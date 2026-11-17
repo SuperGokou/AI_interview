@@ -49,6 +49,27 @@ def test_nudges_never_offer_the_answer():
     assert "不要给提示" in nudge_text(CHECK_IN)
 
 
+def test_a_repeated_silence_is_not_met_with_the_same_sentence():
+    assert nudge_text(CHECK_IN) != nudge_text(CHECK_IN, repeated=True)
+    assert "不要重复" in nudge_text(MOVE_ON, repeated=True)
+    watch = SilenceWatch(check_in_s=10, move_on_s=10)
+    watch.interviewer_audio(0, now=0)
+    assert not watch.repeated
+    assert [watch.due(10), watch.due(20)] == [CHECK_IN, MOVE_ON]
+    assert watch.repeated  # the next check-in is for a second unanswered question
+
+
+def test_knows_whether_the_interviewer_is_still_audible():
+    watch = SilenceWatch()
+    assert not watch.interviewer_speaking(0)
+    watch.interviewer_audio(10, now=0)
+    assert watch.interviewer_speaking(9)
+    assert not watch.interviewer_speaking(10.5)
+    assert watch.interviewer_speaking(10.5, margin=1)  # the page plays a little late
+    watch.cut_short(now=4)
+    assert not watch.interviewer_speaking(4.1)
+
+
 class _Bridge:
     prompts: list[str] = []
 

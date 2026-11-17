@@ -222,7 +222,7 @@ def _record_termination(bind, session_id: int, warnings: int) -> None:
     with Session(bind=bind) as worker_db:
         record_cheat_event(
             worker_db, session_id, kind=TERMINATION_KIND, severity="high",
-            evidence=f"提醒 {warnings} 次后仍检测到键盘敲击声,面试被系统终止。",
+            evidence=f"累计 {warnings} 次违规(手机、键盘声或旁人),面试被系统终止。",
         )
 
 
@@ -313,7 +313,14 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
     max_seconds = max(1, job.duration_minutes) * 60 + _OVERTIME_GRACE_S
 
     timer = TurnTimer(sample_rate=settings.output_sample_rate)
-    silence = SilenceWatch(check_in_s=float(settings.silence_nudge_s or 20))
+    silence = SilenceWatch(
+        check_in_s=float(settings.silence_nudge_s or 20),
+        move_on_s=float(settings.silence_move_on_s),
+    )
+    # The page holds audio back a little (lip-sync), so it finishes later than sent.
+    playback_margin_s = settings.mouth_playback_delay_ms / 1000 + 0.3
+    reply = {"generating": False, "dropping": False}
+    barge: dict = {"task": None}
     clock = asyncio.get_running_loop().time
 
     def _persist(role: str, text: str, *, latency_ms: int | None = None) -> None:
@@ -339,6 +346,8 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
             {"type": "mouth_config", "delay_ms": settings.mouth_playback_delay_ms, **mouth.config}
         )
     turn = {"utterance": 0, "samples": 0}
+    if not settings.proctor_raw_mic:
+        await ws.send_json({"type": "proctor_config", "raw_mic": False})
 
     state_closed = {"value": False}
 
@@ -375,12 +384,36 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
         task.add_done_callback(background.discard)
         return task
 
+    async def barge_in():
+        """The candidate keeps talking while the interviewer is: stop and listen,
+        as a person would, instead of playing the rest of the reply over them."""
+        try:
+            await asyncio.sleep(settings.barge_in_hold_ms / 1000)
+            now = clock()
+            if not silence.interviewer_speaking(now, margin=playback_margin_s):
+                return
+            if reply["generating"]:
+                reply["dropping"] = True
+                await bridge.cancel_response()
+                if mouth is not None:
+                    await mouth.reset()
+                if turn["samples"]:
+                    turn["utterance"] += 1
+                    turn["samples"] = 0
+            silence.cut_short(now)
+            await ws.send_json({"type": "interrupt"})
+        finally:
+            barge["task"] = None
+
     async def pump_downstream():
         try:
             while True:
                 event = await bridge.events()
                 kind = event.get("kind")
                 if kind == "audio":
+                    if reply["dropping"]:
+                        continue  # the rest of a reply the candidate talked over
+                    reply["generating"] = True
                     pcm = event["data"]
                     timer.on_interviewer_audio(len(pcm), clock())
                     interviewer["spoke_at"] = clock()
@@ -399,6 +432,7 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                     if mouth is not None and mouth.alive:
                         await mouth.send_audio(pcm)
                 elif kind == "response_done":
+                    reply["generating"] = reply["dropping"] = False
                     if turn["samples"]:
                         turn["utterance"] += 1
                         turn["samples"] = 0
@@ -420,6 +454,16 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                 elif kind == "speech_started":
                     timer.on_candidate_speech_started(clock())
                     silence.candidate_active(clock())
+                    if (
+                        settings.barge_in_hold_ms
+                        and barge["task"] is None
+                        and silence.interviewer_speaking(clock(), margin=playback_margin_s)
+                    ):
+                        barge["task"] = _spawn(barge_in())
+                elif kind == "speech_stopped":
+                    if barge["task"] is not None:
+                        barge["task"].cancel()  # a cough or a word, not an interruption
+                        barge["task"] = None
                 elif kind == "vision":
                     # 注:真实 Qwen 视觉观测的产出留待 Phase 6 联调;这里建好处理管线。
                     signals = interpret_visual_observation(
@@ -476,7 +520,7 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
     async def proctor_loop():
         """Every few seconds, have the vision model look at the newest camera frame."""
         monitor = ProctorMonitor()
-        policy = ViolationPolicy(limit=settings.typing_warning_limit)
+        policy = ViolationPolicy(limit=settings.violation_limit)
         interval = float(settings.proctor_interval_s or 20)
         last_start = clock()
         while True:
@@ -500,11 +544,11 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                 await ws.send_json({"type": "integrity", "level": level})
                 action = policy.record(kinds)
                 if action == END:
-                    await end_for_violations(policy.limit)
+                    await end_for_violations(policy.count)
                     return
                 if action is not None:
                     await bridge.trigger_response(
-                        warning_text(policy.count, policy.limit, job.language)
+                        warning_text(kinds, policy.count, policy.limit, job.language)
                     )
             except asyncio.CancelledError:
                 raise
@@ -518,11 +562,14 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
         """A real interviewer does not wait for ever: check in, then move on."""
         while True:
             await asyncio.sleep(1.0)
+            repeated = silence.repeated
             stage = silence.due(clock())
             if stage is None:
                 continue
             try:
-                await bridge.trigger_response(nudge_text(stage, job.language))
+                await bridge.trigger_response(
+                    nudge_text(stage, job.language, repeated=repeated)
+                )
             except asyncio.CancelledError:
                 raise
             except Exception:

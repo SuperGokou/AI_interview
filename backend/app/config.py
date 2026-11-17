@@ -48,7 +48,10 @@ class Settings:
     proctor_model: str
     proctor_interval_s: int
     silence_nudge_s: int
-    typing_warning_limit: int
+    silence_move_on_s: int
+    violation_limit: int
+    barge_in_hold_ms: int
+    proctor_raw_mic: bool
     # 文本向量(AI 答案相似度);OpenAI 兼容接口
     embedding_api_key: str
     embedding_base_url: str
@@ -107,11 +110,17 @@ def get_settings() -> Settings:
             "PROCTOR_MODEL", "qwen3.8-omni-flash,qwen3.8-flash,qwen3-vl-plus,qwen-vl-plus"
         ),
         # 0 关闭画面监考。
-        proctor_interval_s=_bounded_int("PROCTOR_INTERVAL_S", 3, 0, 600),
+        proctor_interval_s=_bounded_int("PROCTOR_INTERVAL_S", 5, 0, 600),
         # 候选人沉默这么久后面试官主动询问;0 关闭(一直等候选人开口)。
         silence_nudge_s=_bounded_int("SILENCE_NUDGE_S", 20, 0, 300),
-        # 键盘敲击声当场提醒的次数;提醒满之后再出现一次就结束面试。0 = 只记录,不提醒也不结束。
-        typing_warning_limit=_bounded_int("TYPING_WARNING_LIMIT", 3, 0, 20),
+        # 面试官询问之后,再沉默这么久就进入下一题。
+        silence_move_on_s=_bounded_int("SILENCE_MOVE_ON_S", 30, 5, 300),
+        # 第几次违规(手机、键盘声、旁人)直接结束面试;之前每次都当场提醒。0 = 只记录。
+        violation_limit=_bounded_int("VIOLATION_LIMIT", 3, 0, 20),
+        # 候选人在面试官说话时连续说了这么久,面试官就停下来听。0 = 不打断。
+        barge_in_hold_ms=_bounded_int("BARGE_IN_HOLD_MS", 700, 0, 5000),
+        # 监考是否另开一路不降噪的麦克风(能听清键盘声)。关掉后改用面试官那一路。
+        proctor_raw_mic=os.getenv("PROCTOR_RAW_MIC", "1").strip().lower() not in ("0", "false", "no", "off"),
         # 默认复用百炼的 key;也可指向自建的开源向量模型服务(如 bge-m3)。
         embedding_api_key=os.getenv("EMBEDDING_API_KEY") or dashscope_key,
         embedding_base_url=os.getenv(

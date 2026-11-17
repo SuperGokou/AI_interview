@@ -10,25 +10,28 @@ from app.core.violations import END, WARN, ViolationPolicy, ending_text, warning
 from app.db import models
 
 
-def test_three_warnings_then_the_interview_ends():
+def test_two_warnings_then_the_third_violation_ends_the_interview():
     policy = ViolationPolicy(limit=3)
-    actions = [policy.record(["keyboard_typing"]) for _ in range(4)]
-    assert actions == [WARN, WARN, WARN, END]
+    actions = [policy.record(kinds) for kinds in (["keyboard_typing"], ["phone"], ["other_voice"])]
+    assert actions == [WARN, WARN, END]
 
 
-def test_other_findings_are_not_warned_and_zero_switches_it_off():
+def test_judgement_calls_are_not_violations_and_zero_switches_it_off():
     policy = ViolationPolicy(limit=3)
-    assert policy.record(["phone", "multi_person"]) is None
+    assert policy.record(["gaze_off_screen", "suspicious_object", "background_noise"]) is None
     assert policy.count == 0
+    assert policy.record(["phone", "multi_person"]) == WARN  # one check, one violation
+    assert policy.count == 1
     assert ViolationPolicy(limit=0).record(["keyboard_typing"]) is None
 
 
-def test_wording_names_the_count_and_the_reason():
-    assert "第 2 次提醒" in warning_text(2, 3)
-    assert "最后一次提醒" in warning_text(3, 3)
-    assert "最后一次提醒" not in warning_text(1, 3)
+def test_wording_says_what_was_noticed_and_how_many_are_left():
+    first = warning_text(["phone"], 1, 3)
+    assert "手机" in first and "第 1 次违规" in first and "最后一次提醒" not in first
+    second = warning_text(["keyboard_typing", "other_voice"], 2, 3)
+    assert "键盘" in second and "其他人说话" in second and "最后一次提醒" in second
     assert "多次违规" in ending_text()
-    assert "warning 2 of 3" in warning_text(2, 3, "en")
+    assert "violation 2" in warning_text(["phone"], 2, 3, "en")
 
 
 class _Typing:
@@ -93,12 +96,12 @@ def test_websocket_warns_then_ends_the_interview(client, db_session, monkeypatch
         except Exception:
             pass  # the server hung up, which is the point
 
-    warnings = [p for p in _Bridge.prompts if "累计超过" in p]
-    assert len(warnings) == 3
+    warnings = [p for p in _Bridge.prompts if "次违规,累计" in p]
+    assert len(warnings) == 2
     assert "多次违规" in _Bridge.prompts[-1]
-    assert {"type": "error", "message": "监考多次检测到键盘敲击声，属于多次违规，本次面试已结束。"} in received
+    assert {"type": "error", "message": "监考多次检测到违规行为，属于多次违规，本次面试已结束。"} in received
 
     db_session.expire_all()
     kinds = [e.kind for e in db_session.query(models.CheatEvent).all()]
-    assert kinds.count("keyboard_typing") == 4
+    assert kinds.count("keyboard_typing") == 3
     assert kinds[-1] == "repeated_violation"

@@ -280,3 +280,8 @@ def test_a_second_voice_is_not_trusted_while_the_interviewer_is_talking():
     flags = ["keyboard_typing", "other_voice"]
     assert _without_echo(flags, interviewer_spoke=True) == ["keyboard_typing"]
     assert _without_echo(flags, interviewer_spoke=False) == flags
+
+
+def test_a_phone_is_one_finding_not_two():
+    proctor = VisionProctor(_Vision({"flags": ["phone", "suspicious_object"], "detail": "手持手机"}))
+    assert proctor.check(b"x")["flags"] == ["phone"]
