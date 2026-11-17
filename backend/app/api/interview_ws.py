@@ -41,6 +41,7 @@ from app.core.violations import (
 )
 from app.core.interview_trace import InterviewTrace
 from app.core.live_frames import live_frames
+from app.core.presence import supervisor_presence
 from app.core.interview_bridge import InterviewBridge
 from app.core.report_store import build_report
 from app.core.scoring import ReportGenerator
@@ -132,6 +133,9 @@ _PROCTOR_MIN_PAUSE_S = 0.5
 
 # 面试官的话音落下后,房间里的余响和回声消除的收敛还要一小会儿。
 _ECHO_TAIL_S = 1.5
+
+# 多久看一次监督员是否在线。
+_PRESENCE_REFRESH_S = 3.0
 
 _INTERVIEWER_ECHO_NOTE = "这段时间面试官(AI)正在说话,录音里它的声音不算其他人。"
 
@@ -243,6 +247,21 @@ def _proctor_frame(
             if get_settings().proctor_save_snapshots:
                 save_snapshot(worker_db, event, jpeg)
         return integrity_level(worker_db, session_id), [signal.kind for signal in signals]
+
+
+def _supervisors_now(db: Session, session_id: int) -> list[dict]:
+    """The supervisors assigned to this interview and who is watching right now.
+
+    A two-column lookup on the handler's own session: quick enough to run on the
+    event loop, and it keeps this off the worker threads' connections.
+    """
+    rows = (
+        db.query(models.SupervisorLink.id, models.SupervisorLink.label)
+        .filter_by(session_id=session_id)
+        .order_by(models.SupervisorLink.id)
+        .all()
+    )
+    return [{"label": label, "online": supervisor_presence.online(link_id)} for link_id, label in rows]
 
 
 def _record_termination(bind, session_id: int, warnings: int) -> None:
@@ -649,6 +668,22 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
             except Exception:
                 logger.exception("could not prompt the interviewer to break the silence")
 
+    async def presence_loop():
+        """Tell the page which supervisors are watching, whenever that changes."""
+        shown: list[dict] = []
+        while True:
+            try:
+                current = _supervisors_now(db, session_id)
+                if current != shown:
+                    shown = current
+                    await ws.send_json({"type": "supervisors", "list": current})
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("could not report supervisor presence")
+            await asyncio.sleep(_PRESENCE_REFRESH_S)
+
+    presence_task = asyncio.create_task(presence_loop())
     silence_task = asyncio.create_task(silence_loop()) if settings.silence_nudge_s else None
     proctor_task = asyncio.create_task(proctor_loop()) if proctor is not None else None
     down_task = asyncio.create_task(pump_downstream())
@@ -694,7 +729,8 @@ async def interview_ws(ws: WebSocket, db: Session = Depends(get_db)):
                 # Let an in-flight check on the final answer finish and be recorded.
                 await asyncio.wait(background, timeout=_DETECTION_DRAIN_S)
             for task in (
-                down_task, opener_task, relay_task, proctor_task, silence_task, *background
+                down_task, opener_task, relay_task, proctor_task, silence_task,
+                presence_task, *background
             ):
                 if task is not None:
                     task.cancel()

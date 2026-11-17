@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import StateVideoInterviewerTile from '../../components/StateVideoInterviewerTile';
 import { useInterviewSession } from '../../hooks/useInterviewSession';
 import { useAvatarStateController } from '../../lib/avatarStateController';
-import type { IntegrityLevel } from '../../types';
+import type { IntegrityLevel, SupervisorPresence } from '../../types';
 import { api } from '../../lib/api';
 import { useWelcomePresence } from '../../hooks/useWelcomePresence';
 
@@ -307,6 +307,58 @@ function LandingVideo({
  * Returns:
  *   The welcome screen or active interview room UI.
  */
+const SUPERVISOR_SLOTS = [
+  {
+    initials: 'S1',
+    fallback: '监督员 1',
+    glow: 'bg-[radial-gradient(circle_at_50%_0%,rgba(45,212,239,0.24),transparent_55%),linear-gradient(135deg,#172033,#0b1020)]',
+    badge: 'border-cyan-300/40 bg-cyan-300/10 text-cyan-100',
+  },
+  {
+    initials: 'S2',
+    fallback: '监督员 2',
+    glow: 'bg-[radial-gradient(circle_at_50%_0%,rgba(167,139,250,0.22),transparent_55%),linear-gradient(135deg,#191b33,#0b1020)]',
+    badge: 'border-violet-300/40 bg-violet-300/10 text-violet-100',
+  },
+] as const;
+
+interface SupervisorTileProps {
+  slot: (typeof SUPERVISOR_SLOTS)[number];
+  supervisor?: SupervisorPresence;
+  interviewActive: boolean;
+}
+
+/** One supervisor seat: who it is for and whether they are actually watching. */
+function SupervisorTile({ slot, supervisor, interviewActive }: SupervisorTileProps) {
+  const online = supervisor?.online === true;
+  const status = online
+    ? '已接入'
+    : supervisor
+      ? '等待接入'
+      : interviewActive
+        ? '未安排'
+        : '面试开始后显示';
+  return (
+    <section className="relative overflow-hidden rounded-lg bg-[#111827] ring-1 ring-white/10">
+      <div className={`absolute inset-0 ${slot.glow}`} />
+      <div className="relative flex h-full flex-col items-center justify-center gap-2 text-center">
+        <div
+          className={`flex h-11 w-11 items-center justify-center rounded-full border text-sm font-semibold ${slot.badge}`}
+        >
+          {slot.initials}
+        </div>
+        <div className="text-xs font-semibold text-white/85">{supervisor?.label ?? slot.fallback}</div>
+        <div
+          className={`flex items-center gap-1.5 text-[11px] ${online ? 'font-semibold text-emerald-300' : 'text-white/45'}`}
+        >
+          {online && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden="true" />}
+          {status}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function InterviewRoom() {
   const avatarSize = useAvatarSize();
   const urlToken = useUrlToken();
@@ -535,27 +587,14 @@ export default function InterviewRoom() {
               </div>
             </section>
 
-            <section className="relative overflow-hidden rounded-lg bg-[#111827] ring-1 ring-white/10">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(45,212,239,0.24),transparent_55%),linear-gradient(135deg,#172033,#0b1020)]" />
-              <div className="relative flex h-full flex-col items-center justify-center gap-2 text-center">
-                <div className="flex h-11 w-11 items-center justify-center rounded-full border border-cyan-300/40 bg-cyan-300/10 text-sm font-semibold text-cyan-100">
-                  S1
-                </div>
-                <div className="text-xs font-semibold text-white/85">监督员 1</div>
-                <div className="text-[11px] text-white/45">等待接入</div>
-              </div>
-            </section>
-
-            <section className="relative overflow-hidden rounded-lg bg-[#111827] ring-1 ring-white/10">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(167,139,250,0.22),transparent_55%),linear-gradient(135deg,#191b33,#0b1020)]" />
-              <div className="relative flex h-full flex-col items-center justify-center gap-2 text-center">
-                <div className="flex h-11 w-11 items-center justify-center rounded-full border border-violet-300/40 bg-violet-300/10 text-sm font-semibold text-violet-100">
-                  S2
-                </div>
-                <div className="text-xs font-semibold text-white/85">监督员 2</div>
-                <div className="text-[11px] text-white/45">等待接入</div>
-              </div>
-            </section>
+            {SUPERVISOR_SLOTS.map((slot, index) => (
+              <SupervisorTile
+                key={slot.initials}
+                slot={slot}
+                supervisor={session.supervisors?.[index]}
+                interviewActive={session.active}
+              />
+            ))}
           </aside>
         </main>
 

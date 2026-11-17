@@ -74,6 +74,12 @@ export interface CreateSessionResponse {
   status: string;
 }
 
+/** A supervisor assigned to the interview and whether they are watching right now. */
+export interface SupervisorPresence {
+  label: string;
+  online: boolean;
+}
+
 export interface CheatEvent {
   /** Present on admin reads; needed to fetch the snapshot. */
   id?: number;

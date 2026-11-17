@@ -9,11 +9,13 @@ from sqlalchemy.pool import StaticPool
 from app.main import app
 from app.db.base import Base, get_db
 from app.security import reset_auth_throttle
+from app.core.presence import supervisor_presence
 
 
 @pytest.fixture(autouse=True)
 def _fresh_auth_throttle():
     reset_auth_throttle()
+    supervisor_presence.clear()  # link ids repeat across test databases
     yield
     reset_auth_throttle()
 

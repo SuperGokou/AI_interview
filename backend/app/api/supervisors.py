@@ -7,6 +7,7 @@ from app.api.sessions import _get_session_or_404, list_transcripts
 from app.core.cheat_store import list_cheat_events
 from app.core.integrity import compute_integrity_level
 from app.core.live_frames import live_frames
+from app.core.presence import supervisor_presence
 from app.core.tokens import generate_link_token
 from app.db import models
 from app.db.base import get_db
@@ -53,6 +54,8 @@ def _resolve(db, token):
     sess = db.get(models.InterviewSession, link.session_id) if link else None
     if not sess:
         raise HTTPException(404, "supervisor link not found")
+    # Every supervisor read counts as "this supervisor is watching right now".
+    supervisor_presence.seen(link.id)
     return link, sess
 
 

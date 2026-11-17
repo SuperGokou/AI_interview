@@ -14,7 +14,7 @@ import {
   type MouthConfig,
   type TimedFrame,
 } from '../lib/mouthTimeline';
-import type { IntegrityLevel } from '../types';
+import type { IntegrityLevel, SupervisorPresence } from '../types';
 
 const INPUT_SAMPLE_RATE = 16000;
 const OUTPUT_SAMPLE_RATE = 24000;
@@ -52,6 +52,8 @@ export interface UseInterviewSessionResult {
   interviewerText: string;
   candidateText: string;
   integrity: IntegrityLevel;
+  /** Supervisors assigned to this interview; empty when there are none. */
+  supervisors: SupervisorPresence[];
   speaking: boolean;
   mouthOpeningRef: React.MutableRefObject<number>;
   /** Realtime lip-sync: geometry from the server, null when the service is not in use. */
@@ -90,6 +92,7 @@ export function useInterviewSession(
   const [interviewerText, setInterviewerText] = useState('');
   const [candidateText, setCandidateText] = useState('');
   const [integrity, setIntegrity] = useState<IntegrityLevel>('green');
+  const [supervisors, setSupervisors] = useState<SupervisorPresence[]>([]);
   const [speaking, setSpeaking] = useState(false);
   const mouthOpeningRef = useRef(0);
   const [error, setError] = useState('');
@@ -409,6 +412,7 @@ export function useInterviewSession(
           type?: string;
           data?: string;
           u?: number;
+          list?: Array<{ label?: unknown; online?: unknown }>;
           p?: number;
           text?: string;
           level?: string;
@@ -486,6 +490,12 @@ export function useInterviewSession(
           const config = parseMouthConfig(msg);
           mouthConfigRef.current = config;
           setMouthConfig(config);
+        } else if (msg.type === 'supervisors' && Array.isArray(msg.list)) {
+          setSupervisors(
+            msg.list
+              .filter((item) => item && typeof item.label === 'string')
+              .map((item) => ({ label: item.label as string, online: item.online === true }))
+          );
         } else if (msg.type === 'interrupt') {
           // The candidate talked over the interviewer: stop what is still queued.
           playerRef.current?.reset();
@@ -693,6 +703,7 @@ export function useInterviewSession(
     interviewerText,
     candidateText,
     integrity,
+    supervisors,
     speaking,
     mouthOpeningRef,
     mouthConfig,

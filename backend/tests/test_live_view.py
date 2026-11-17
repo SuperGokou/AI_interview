@@ -93,7 +93,12 @@ def test_a_finding_keeps_its_frame_and_only_admins_can_fetch_it(client, db_sessi
     picture = bytes([0xFF, 0xD8]) + b" the frame with the phone in it"
     with client.websocket_connect("/ws/interview?token=tok-snap") as ws:
         ws.send_text(json.dumps({"type": "image", "data": base64.b64encode(picture).decode()}))
-        assert ws.receive_json() == {"type": "integrity", "level": "red"}
+        frames = [ws.receive_json()]
+        while frames[-1]["type"] != "integrity":
+            frames.append(ws.receive_json())
+        assert frames[-1] == {"type": "integrity", "level": "red"}
+        # The page is also told who is assigned to supervise; nobody is watching yet.
+        assert {"type": "supervisors", "list": [{"label": "监督员 1", "online": False}]} in frames
 
     events = client.get("/api/sessions/tok-snap/cheat").json()["events"]
     assert [(e["kind"], e["snapshot"]) for e in events] == [("phone", True)]
@@ -109,3 +114,34 @@ def test_snapshot_route_is_not_public():
     assert _is_public("GET", "/api/supervisors/abc/frame")
     assert not _is_public("GET", "/api/sessions/abc/cheat/1/snapshot")
     assert not _is_public("GET", "/api/sessions/abc/cheat")
+
+
+def test_presence_expires_when_the_supervisor_stops_looking():
+    from app.core.presence import Presence
+
+    now = [0.0]
+    presence = Presence(window_s=10, clock=lambda: now[0])
+    assert not presence.online(1)
+    presence.seen(1)
+    now[0] = 9
+    assert presence.online(1) and not presence.online(2)
+    now[0] = 11
+    assert not presence.online(1)
+
+
+def test_interview_page_learns_that_a_supervisor_is_watching(client, db_session, monkeypatch):
+    _session(db_session, "tok-watch")
+    monkeypatch.setattr("app.api.interview_ws.bridge_factory", _Bridge)
+    monkeypatch.setattr("app.api.interview_ws.ai_detector_factory", lambda: object())
+    monkeypatch.setattr("app.api.interview_ws.proctor_factory", lambda: None)
+    monkeypatch.setattr("app.api.interview_ws._PRESENCE_REFRESH_S", 0.05)
+
+    with client.websocket_connect("/ws/interview?token=tok-watch") as ws:
+        assert ws.receive_json() == {
+            "type": "supervisors", "list": [{"label": "监督员 1", "online": False}],
+        }
+        # The supervisor opens their link...
+        assert client.get("/api/supervisors/sup-tok-watch/transcripts").status_code == 200
+        assert ws.receive_json() == {
+            "type": "supervisors", "list": [{"label": "监督员 1", "online": True}],
+        }
