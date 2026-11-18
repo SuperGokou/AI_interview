@@ -79,17 +79,38 @@ def _is_protected(path: str) -> bool:
     )
 
 
-def _credentials_valid(authorization: str, expected_password: str) -> bool:
+def admin_accounts() -> dict[str, str]:
+    """Every administrator login: {username: password}.
+
+    ADMIN_USERNAME / ADMIN_PASSWORD is the main account. ADMIN_ACCOUNTS adds more,
+    as comma-separated name:password pairs, so several people can sign in under
+    their own name. Entries without a name or password are ignored.
+    """
+    accounts: dict[str, str] = {}
+    password = os.getenv("ADMIN_PASSWORD", "")
+    if password:
+        accounts[os.getenv("ADMIN_USERNAME", "admin")] = password
+    for entry in os.getenv("ADMIN_ACCOUNTS", "").split(","):
+        name, _, secret = entry.strip().partition(":")
+        if name.strip() and secret:
+            accounts[name.strip()] = secret
+    return accounts
+
+
+def _credentials_valid(authorization: str, accounts: dict[str, str]) -> bool:
     try:
         scheme, payload = authorization.split(" ", 1)
         user, password = base64.b64decode(payload, validate=True).decode().split(":", 1)
     except (ValueError, UnicodeError, binascii.Error):
         return False
-    expected_user = os.getenv("ADMIN_USERNAME", "admin")
-    # Evaluate both comparisons so timing does not reveal which half was wrong.
-    user_ok = hmac.compare_digest(user.encode(), expected_user.encode())
-    password_ok = hmac.compare_digest(password.encode(), expected_password.encode())
-    return scheme.lower() == "basic" and user_ok and password_ok
+    # Compare against every account, without stopping early, so timing does not
+    # reveal which usernames exist or which half was wrong.
+    matched = False
+    for expected_user, expected_password in accounts.items():
+        user_ok = hmac.compare_digest(user.encode(), expected_user.encode())
+        password_ok = hmac.compare_digest(password.encode(), expected_password.encode())
+        matched = (user_ok and password_ok) or matched
+    return scheme.lower() == "basic" and matched
 
 
 def _same_origin(request: Request, origin: str) -> bool:
@@ -128,8 +149,8 @@ class AdminBoundaryMiddleware(BaseHTTPMiddleware):
         """Return a denial response, or None when the request may proceed."""
         if not _is_protected(path) or _is_public(request.method, path):
             return None
-        expected = os.getenv("ADMIN_PASSWORD", "")
-        if not expected:
+        accounts = admin_accounts()
+        if not accounts:
             return JSONResponse(
                 {"detail": "Administrator credentials are not configured"}, status_code=503
             )
@@ -142,7 +163,7 @@ class AdminBoundaryMiddleware(BaseHTTPMiddleware):
                 headers={"Retry-After": str(int(AUTH_FAILURE_WINDOW_S))},
             )
         authorization = request.headers.get("authorization", "")
-        if not _credentials_valid(authorization, expected):
+        if not _credentials_valid(authorization, accounts):
             if authorization:  # a bare first visit is not a guessing attempt
                 _record_failure(client, now)
             return JSONResponse(

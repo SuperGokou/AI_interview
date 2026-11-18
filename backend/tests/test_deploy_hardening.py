@@ -286,3 +286,27 @@ def test_sessions_left_active_by_a_previous_run_are_closed(db_session):
     by_token = {s.link_token: s for s in db_session.query(models.InterviewSession)}
     assert by_token["tok-orphan"].status == "done" and by_token["tok-orphan"].ended_at is not None
     assert by_token["tok-waiting"].status == "pending"
+
+
+def test_several_administrators_can_sign_in_under_their_own_names(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_ACCOUNTS", "alice:first-secret, bob:second:with-colon ,:nameless,empty:")
+    anonymous = client  # a per-request login replaces the fixture's
+    if True:
+        assert anonymous.get("/api/jobs", auth=("alice", "first-secret")).status_code == 200
+        assert anonymous.get("/api/jobs", auth=("bob", "second:with-colon")).status_code == 200
+        # The main account keeps working next to them.
+        assert anonymous.get("/api/jobs", auth=("admin", "test-only-admin-password")).status_code == 200
+        # One person's password does not open another person's account.
+        assert anonymous.get("/api/jobs", auth=("alice", "second:with-colon")).status_code == 401
+        assert anonymous.get("/api/jobs", auth=("empty", "")).status_code == 401
+        assert anonymous.get("/api/jobs", auth=("", "nameless")).status_code == 401
+
+
+def test_extra_accounts_alone_are_enough_to_configure_the_admin(monkeypatch):
+    from app.security import admin_accounts
+
+    monkeypatch.delenv("ADMIN_PASSWORD", raising=False)
+    monkeypatch.setenv("ADMIN_ACCOUNTS", "carol:pw-1")
+    assert admin_accounts() == {"carol": "pw-1"}
+    monkeypatch.delenv("ADMIN_ACCOUNTS")
+    assert admin_accounts() == {}
