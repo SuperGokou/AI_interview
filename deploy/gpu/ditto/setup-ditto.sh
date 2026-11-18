@@ -7,7 +7,9 @@ INDEX=http://mirrors.cloud.aliyuncs.com/pypi/simple/
 HOST=mirrors.cloud.aliyuncs.com
 
 echo "[1/3] python environment"
-[ -d $ROOT/venv ] || python3 -m venv $ROOT/venv
+# A fresh Ubuntu image has python3 but not its venv module.
+python3 -c "import ensurepip" 2>/dev/null || DEBIAN_FRONTEND=noninteractive apt-get install -y -q python3-venv
+[ -x $ROOT/venv/bin/pip ] || { rm -rf $ROOT/venv; python3 -m venv $ROOT/venv; }
 PIP=$ROOT/venv/bin/pip
 $PIP install -q --upgrade pip -i $INDEX --trusted-host $HOST
 $PIP install -q torch==2.7.1 torchvision==0.22.1 \
@@ -15,6 +17,9 @@ $PIP install -q torch==2.7.1 torchvision==0.22.1 \
 $PIP install -q numpy==2.0.1 librosa tqdm filetype imageio imageio-ffmpeg opencv-python-headless \
   scikit-image scipy cython einops colored mediapipe onnxruntime-gpu soundfile \
   -i $INDEX --trusted-host $HOST
+
+# What ditto_service.py itself needs to serve the WebSocket.
+$PIP install -q fastapi "uvicorn[standard]" websockets -i $INDEX --trusted-host $HOST
 
 echo "[2/3] checkpoints"
 mkdir -p $REPO/checkpoints && cd $REPO/checkpoints
